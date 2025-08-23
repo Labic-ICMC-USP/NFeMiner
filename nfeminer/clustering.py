@@ -543,7 +543,7 @@ class Analyser:
             G (CGraph): Input graph.
             max_iter (int, optional): Maximum number of iterations. Defaults to 10.
             step  (int, optional): Step between iterations
-
+        
         Returns:
             CGraph: The clustered graph.
         """
@@ -585,7 +585,9 @@ class Analyser:
         only_unknown: bool = False,
         not_display_unknown: bool = False,
         filter_node_ids: list[str] = None,
-        show_node_id: bool = False
+        show_node_id: bool = False,
+        TEXT_COLUMN:str='produto_detalhado',
+        ID_GTIN_COLUMN:str='gtin'
     ):
         """
         Display representative nodes of each cluster in the terminal.
@@ -599,6 +601,8 @@ class Analyser:
             not_display_unknown (bool, optional): If True, hide unknown cluster (-1). Defaults to False.
             filter_node_ids (list[str], optional): Show clusters only if they contain at least one of these node_ids. Defaults to None.
             show_node_id (bool, optional): If True, also display the node_id. Defaults to False.
+            TEXT_COLUMN (str): Defines the column of string to be show. By default it's 'produto_detalhado'.
+            ID_GTIN_COLUMN (str): Defines the column of gtin to be show. By default it's 'gtin'.
         """
         subgraphs = G.dismember()
         if -1 in subgraphs:
@@ -611,11 +615,11 @@ class Analyser:
         def node2text(node_id, subgraph):
             data = subgraph[node_id]
             text = ""
-            text += f"{data['gtin']:15}" + " "  # Adds the GTIN
+            text += f"{data[ID_GTIN_COLUMN]:15}" + " "  # Adds the GTIN
             if show_node_id:
                 text += f"{node_id:32}"
             text += "    "
-            text += f"{data['produto_detalhado']:80}"
+            text += f"{data[TEXT_COLUMN]:80}"
             return text
             
         for i_iter, (label, subgraph) in enumerate(subgraphs.items()):
@@ -625,7 +629,7 @@ class Analyser:
             if (filter_node_ids is not None) and not any([node_id in filter_node_ids for node_id in subgraph.nodes()]):
                 continue  # If filter_node_ids != [] and the subgraph contains none of them, skip
             
-            gtin_true_counts = np.unique([subgraph[node_id]['gtin'] for node_id in subgraph.nodes()], return_counts=True)[1]
+            gtin_true_counts = np.unique([subgraph[node_id][ID_GTIN_COLUMN] for node_id in subgraph.nodes()], return_counts=True)[1]
             most_representatives = subgraph.core(method=core_method, weight=weight)[:n_objs]
             
             if (n_objs == 1 or len(most_representatives) == 1) or (only_unknown and label != -1):
@@ -827,12 +831,23 @@ class NFeCluster():
         
         if data is not None:
             ## Creates a StringMatchGenerator. Otherwise, assumes that data will be passed later
-            edge_gen = StringMatchEdgeGenerator(data)
-            edges_df = edge_gen.generate_edges(field_str=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR)
-            sm_graph = build_graph(data,edges_df,column_name=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE)
-            self.add_data(sm_graph,graph_type='dismember')
+            if isinstance(data,pd.DataFrame):
+                edge_gen = StringMatchEdgeGenerator(data)
+                edges_df = edge_gen.generate_edges(field_str=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR)
+                sm_graph = build_graph(data,edges_df,column_name=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE)
+                self.add_data(sm_graph,graph_type='dismember',not_nfe=False)
+            else:
+                ## Creates a DataFrame from data=list[str], considering that nfes are not passed
+                nfes_fake = list(np.arange(len(data)))
+                datadf = pd.DataFrame(data={CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE:nfes_fake, 
+                                            CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR:data})
+                edge_gen = StringMatchEdgeGenerator(datadf)
+                edges_df = edge_gen.generate_edges(field_str=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR)
+                sm_graph = build_graph(datadf,edges_df,column_name=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE)
+                self.add_data(sm_graph,graph_type='dismember',not_nfe=True)
+                
     
-    def add_data(self,data:nx.Graph,graph_type:str,name:str=None) -> None:
+    def add_data(self,data:nx.Graph,graph_type:str,name:str=None,not_nfe:bool=False) -> None:
         """
         Add a graph built by one of the classes extended from similarity_graph.EdgeGenerator.
                 
@@ -840,12 +855,14 @@ class NFeCluster():
             data (networkx.Graph): graph to be added.
             graph_type (str): the type of the graph ('dismember' or 'merging').
             name (str): name of the graph. Default is None.
+            not_nfe(bool): if true, considers that you will not pass nfe. By default it's False.
         """
                 
         
         if (not (graph_type=='dismember' or graph_type=='merging')):
             raise ValueError(f"graph_type '{graph_type}' is not allowed. It must be 'dismember' or 'merging'")
         
+        self.nfes_provided = not not_nfe
         self.graphs[graph_type].append(CGraph(data,name=name))
     def cluster(self,apply_merging=False,
         clustering_method='deep_clique',clustering_method_params={}):
@@ -907,6 +924,14 @@ class NFeCluster():
         ## prepare output
         ## the output is in the format: id_nfe:label
         idnfe2label = dict(all_cutted.nodes(data='label'))  ## note: node ID is the same as id_nfe
+        
+        ## If nfes were not provided (they are fake), the output will be sorted based on field nfe
+        print("not self.nfes_provided: ",not self.nfes_provided)
+        if not self.nfes_provided:
+            sorted_idx = list(sorted(list(idnfe2label.keys())))
+            unsorted_labels = list(idnfe2label.values())
+            only_labels = [str(unsorted_labels[idx]) for idx in sorted_idx]
+            return only_labels, all_cutted ## list[str] , CGraph
         return idnfe2label, all_cutted
 
 
@@ -961,14 +986,15 @@ if __name__=='__main__':
     print("columns: ",df.columns)
     
     ## padrão de só usar o stringmatch
-    nfc = NFeCluster(data=df)
+    nfc = NFeCluster(data=df['produto_detalhado'].tolist())
     print(nfc.graphs)
     print('stringmatch graph length:',len(nfc.graphs['dismember'][0]))
     
     ## chamando o método de clusterização
-    id_nfe2label,clusterized = nfc.cluster()
-    print("id_nfe2label: ",id_nfe2label)
-    
+    # id_nfe2label,clusterized = nfc.cluster()
+    only_labels, clusterized = nfc.cluster()
+    # print("id_nfe2label: ",id_nfe2label)
+    print("only_labels: ",only_labels)
     
     Analyser().show_representatives(clusterized,n_objs=3)
     

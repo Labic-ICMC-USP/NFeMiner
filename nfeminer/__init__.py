@@ -26,8 +26,8 @@ class NFeMiner:
         else:
             self.elasticsearch = None
         self.estimator = NFeMinerGTINEstimator()
-        self.clusterizer = NFeCluster()
-
+        # self.clusterizer = NFeCluster()
+    
     def enrichment(self, invoice_id: str, item_id: str, ncm_code: str, gtin_code: str, sales_unit: str, quantity_sold: float, unit_price: float, description: str) -> dict:
         """
         Performs text enrichment using the encapsulated model.
@@ -186,14 +186,15 @@ Descrição: {description}"""
 
     def gtin_estimator(self, description: str) -> dict:
         return self.estimator.gtin_classifier(description)
-
+    
     def gtin_estimator_batch(self, descriptions: List[str]) -> List[dict]:
         from concurrent.futures import ThreadPoolExecutor
-
+        
         with ThreadPoolExecutor() as executor:
             results = list(executor.map(self.estimator.gtin_classifier, descriptions))
         return results
 
-    def clustering(self, descriptions: List[str]) -> dict:
-        self.clusterizer.pipeline(descriptions)
-        return self.clusterizer.output()
+    def clustering(self, descriptions: List[str]) -> list[str]:
+        nfc = NFeCluster(data=descriptions)
+        only_labels, clusterized = nfc.cluster()
+        return only_labels
