@@ -64,10 +64,6 @@ def build_graph(nodes_df: pd.DataFrame, edges_df: pd.DataFrame, column_name: str
 
     return G
 
-
-#######################################################################
-## Builders:
-
 class BERTEmbeddingEdgeGenerator(EdgeGenerator):
     """Generate graph edges based on SentenceBERT semantic similarity.
 
@@ -147,7 +143,6 @@ class BERTEmbeddingEdgeGenerator(EdgeGenerator):
 
         return pd.DataFrame(edges)
 
-
 class NCMSimilarityEdgeGenerator(EdgeGenerator):
     """Generate edges between records that share the same NCM value.
 
@@ -183,7 +178,6 @@ class NCMSimilarityEdgeGenerator(EdgeGenerator):
                         "similarity_score": 1
                     })
         return pd.DataFrame(edges)
-
 
 class ValueRangeEdgeGenerator(EdgeGenerator):
     """Generate edges for rows whose numeric field falls within a given range.
@@ -271,7 +265,6 @@ class ValueRangeEdgeGenerator(EdgeGenerator):
 
         return pd.DataFrame(edges)
 
-
 class StringMatchEdgeGenerator(EdgeGenerator):
     """Generate edges between records whose text fields are nearly identical.
 
@@ -312,7 +305,6 @@ class StringMatchEdgeGenerator(EdgeGenerator):
                         "similarity_score": sim
                     })
         return pd.DataFrame(edges)
-
 
 class PriceBandEdgeGenerator(EdgeGenerator):
     """

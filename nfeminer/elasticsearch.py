@@ -76,7 +76,7 @@ class ElasticSearchDocumentService:
         Initializes the Elasticsearch index manager with an existing Elasticsearch client.
 
         Args:
-            connection (ElasticSearchConnection): An instance of ElasticSearchConnection class.
+            connection (Elasticsearch): An instance of Elasticsearch class.
         """
         
         self.client = client
@@ -227,13 +227,14 @@ class ElasticSearchIndexService:
     Manages Elasticsearch index operations, including creation, updating, and deletion.
     """
 
-    def __init__(self, client):
+    def __init__(self, client: Elasticsearch):
         """
         Initializes the Elasticsearch index manager with an existing Elasticsearch client.
 
         Args:
-            connection (ElasticSearchConnection): An instance of ElasticSearchConnection class.
+            client (Elasticsearch): An instance of Elasticsearch class.
         """
+        
         self.client = client
 
     def check_index_exists(self, index_name: str) -> Dict[str, str]:
@@ -260,7 +261,7 @@ class ElasticSearchIndexService:
                 return {"message": f"Index '{index_name}' does not exist."}
         except Exception as e:
             raise RuntimeError(f"Error checking index existence: {str(e)}")
-
+    
     def create_index(self, index_name: str, mapping: Union[str, Dict]) -> Dict[str, str]:
         """
         Creates an index in Elasticsearch with a provided mapping.
@@ -295,6 +296,7 @@ class ElasticSearchIndexService:
 
         except Exception as e:
             raise RuntimeError(f"Error during index creation: {str(e)}")
+
 
     def update_index(self, index_name: str, settings: Dict) -> Dict[str, str]:
         """

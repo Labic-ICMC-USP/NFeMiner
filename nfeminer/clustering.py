@@ -1,28 +1,23 @@
+import copy
 import networkx as nx
 import numpy as np
-import copy
 import random
 from collections import Counter
-from typing import Dict, Any, List, Tuple, Optional, Union
-from types import SimpleNamespace
 from itertools import chain
-from similarity_graph import *
-
-## community_algorithms:
 from networkx.algorithms.community import girvan_newman
-from networkx.algorithms.community import label_propagation_communities,asyn_lpa_communities
+from networkx.algorithms.community import asyn_lpa_communities
 from networkx.algorithms.community import greedy_modularity_communities
 from networkx.algorithms.community import k_clique_communities
 from networkx.algorithms.community import kernighan_lin_bisection
+from typing import Dict, Any, List, Tuple, Optional, Union
+from types import SimpleNamespace
+from .similarity_graph import *
 
-
-def direct_nearest_neighbors(
-    G: nx.Graph,
-    node_id: Any,
-    k: int,
-    weight: Optional[str] = None,
-    maximize: bool = False,
-) -> List[Tuple[Any, float]]:
+def direct_nearest_neighbors(G: nx.Graph,
+                             node_id: Any,
+                             k: int,
+                             weight: Optional[str] = None,
+                             maximize: bool = False) -> List[Tuple[Any, float]]:
     """Return the direct k nearest neighbors of a node using an edge attribute.
 
     For each neighbor of `node_id`, this function reads the edge attribute
@@ -124,8 +119,6 @@ def semi_supervised_label_propagation(G: nx.Graph,
         if changes / n < tol:
             break
     return labels
-
-
 
 class CGraph():
     def __init__(self, G: nx.Graph, name: str = None):
@@ -517,12 +510,6 @@ class CGraph():
         """
         return direct_nearest_neighbors(self.G, node_id, k, weight=weight, maximize=maximize)
 
-
-
-################################################################################################
-
-
-
 class Analyser:
     """
     A class for analyzing and manipulating CGraph cluster structures.
@@ -576,17 +563,15 @@ class Analyser:
         G << sub_G  # Assigns labels from the subgraph to the larger graph
         return G
      
-    def show_representatives(
-        self,
-        G: CGraph,
-        n_objs: int = 1,
-        weight: str = None,
-        core_method: str = 'degree',
-        only_unknown: bool = False,
-        not_display_unknown: bool = False,
-        filter_node_ids: list[str] = None,
-        show_node_id: bool = False
-    ):
+    def show_representatives(self,
+                             G: CGraph,
+                             n_objs: int = 1,
+                             weight: str = None,
+                             core_method: str = 'degree',
+                             only_unknown: bool = False,
+                             not_display_unknown: bool = False,
+                             filter_node_ids: list[str] = None,
+                             show_node_id: bool = False):
         """
         Display representative nodes of each cluster in the terminal.
 
@@ -775,12 +760,6 @@ class Analyser:
             
         return atual_graph
 
-
-
-################################################################################################
-
-
-
 CLUSTERING_DEFAULTS = SimpleNamespace(
     STRINGMATCH_THRESHOLD=0.9,                      ## threshold do stringmatch
     BERT_THRESHOLD=0.7,                             ## threshold do bert
@@ -794,6 +773,7 @@ CLUSTERING_DEFAULTS = SimpleNamespace(
     MERGING_KN=5,                                   ## quantidade de grupos de representativos comparados por vez
     MERGING_CORE=3                                  ## quantidade de representativos por grupo
 )
+
 class NFeCluster():
     def __init__(self,
                  embedding_model:Union[str|SentenceTransformer]=None,
@@ -847,8 +827,8 @@ class NFeCluster():
             raise ValueError(f"graph_type '{graph_type}' is not allowed. It must be 'dismember' or 'merging'")
         
         self.graphs[graph_type].append(CGraph(data,name=name))
-    def cluster(self,apply_merging=False,
-        clustering_method='deep_clique',clustering_method_params={}):
+
+    def cluster(self,apply_merging=False, clustering_method='deep_clique',clustering_method_params={}):
         """
         Perform graph clustering using the specified method and optionally apply a merging phase.
         
@@ -909,12 +889,6 @@ class NFeCluster():
         idnfe2label = dict(all_cutted.nodes(data='label'))  ## note: node ID is the same as id_nfe
         return idnfe2label, all_cutted
 
-
-
-
-
-
-
 ## Teste para aceitar os grafos 
 if __name__=='__main__' and False:
     df = pd.read_csv('clustering/data/df_1500.csv')
@@ -958,18 +932,15 @@ if __name__=='__main__':
     df = pd.read_csv('clustering/data/df_1500.csv')
     df = df.sample(100)
     print(df.head())
-    print("columns: ",df.columns)
-    
+    print("columns: ", df.columns)
+
     ## padrão de só usar o stringmatch
     nfc = NFeCluster(data=df)
     print(nfc.graphs)
     print('stringmatch graph length:',len(nfc.graphs['dismember'][0]))
-    
+
     ## chamando o método de clusterização
-    id_nfe2label,clusterized = nfc.cluster()
-    print("id_nfe2label: ",id_nfe2label)
-    
-    
-    Analyser().show_representatives(clusterized,n_objs=3)
-    
-    
+    id_nfe2label, clusterized = nfc.cluster()
+    print("id_nfe2label: ", id_nfe2label)
+
+    Analyser().show_representatives(clusterized, n_objs=3)

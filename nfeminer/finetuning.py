@@ -1,10 +1,10 @@
 import unsloth
 import pandas as pd, os, json
-from .enrichment import NFeMinerBaseGenerateModel
 from unsloth import FastModel
-from transformers import TrainerCallback
 from datasets import Dataset
+from transformers import TrainerCallback
 from trl import SFTTrainer, SFTConfig
+from .enrichment import NFeMinerBaseGenerateModel
 
 class ProgressCallback(TrainerCallback):
     """
