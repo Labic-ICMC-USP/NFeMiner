@@ -6,7 +6,7 @@ from collections import Counter
 from typing import Dict, Any, List, Tuple, Optional, Union
 from types import SimpleNamespace
 from itertools import chain
-from similarity_graph import *
+from .similarity_graph import *
 
 ## community_algorithms:
 from networkx.algorithms.community import girvan_newman
@@ -910,7 +910,8 @@ class NFeCluster():
         ## apply merging if requested
         if apply_merging:
             if len(self.graphs['merging']) == 0:
-                print("There are no graphs of 'merging' type. Ignoring merging phase")
+                pass
+                # print("There are no graphs of 'merging' type. Ignoring merging phase")
             else:
                 all_cutted = analyser.group_merging(
                     all_cutted,
@@ -926,76 +927,10 @@ class NFeCluster():
         idnfe2label = dict(all_cutted.nodes(data='label'))  ## note: node ID is the same as id_nfe
         
         ## If nfes were not provided (they are fake), the output will be sorted based on field nfe
-        print("not self.nfes_provided: ",not self.nfes_provided)
+        # print("not self.nfes_provided: ",not self.nfes_provided)
         if not self.nfes_provided:
             sorted_idx = list(sorted(list(idnfe2label.keys())))
             unsorted_labels = list(idnfe2label.values())
             only_labels = [str(unsorted_labels[idx]) for idx in sorted_idx]
             return only_labels, all_cutted ## list[str] , CGraph
         return idnfe2label, all_cutted
-
-
-
-
-
-
-
-## Teste para aceitar os grafos 
-if __name__=='__main__' and False:
-    df = pd.read_csv('clustering/data/df_1500.csv')
-    df = df.sample(100)
-    print(df.head())
-    print("columns: ",df.columns)
-    
-    ## padrão
-    # nfc = NFeCluster(data=df)
-    # print(nfc.graphs)
-    # print(len(nfc.graphs['dismember'][0]))
-    
-    ## passando grafos separados
-    field_str = 'produto_detalhado'
-    nfc = NFeCluster()
-    g1 = build_graph(df,StringMatchEdgeGenerator(df).generate_edges(field_str=field_str)) 
-    g2 = build_graph(df,PriceBandEdgeGenerator(df).generate_edges(min_value=10,max_value=60,normalize=False,field_valor='preco')) 
-    g3 = build_graph(df,NCMSimilarityEdgeGenerator(df).generate_edges(field_ncm='gtin')) 
-    g4 = build_graph(df,ValueRangeEdgeGenerator(df).generate_edges(min_value=10,max_value=60,normalize=False,field_valor='preco',field_group='moeda')) 
-    print("g1",type(g1))
-    print("g2",type(g2))
-    print("g3",type(g3))
-    print("g4",type(g4))
-    nfc.add_data(g1,'dismember')
-    nfc.add_data(g2,'dismember')
-    nfc.add_data(g3,'dismember')
-    nfc.add_data(g4,'dismember')
-    
-    print("bert rodando...")
-    g5 = build_graph(df,BERTEmbeddingEdgeGenerator(df).generate_edges(field_text=field_str))
-    nfc.add_data(g5,'merging')
-    print("bert rodou :3")
-    
-    print("------")
-    print('dismember',[len(g) for g in nfc.graphs['dismember']])
-    print('merging',[len(g) for g in nfc.graphs['merging']])
-    
-    
-## teste do pipeline de cluster
-if __name__=='__main__':
-    df = pd.read_csv('clustering/data/df_1500.csv')
-    df = df.sample(100)
-    print(df.head())
-    print("columns: ",df.columns)
-    
-    ## padrão de só usar o stringmatch
-    nfc = NFeCluster(data=df['produto_detalhado'].tolist())
-    print(nfc.graphs)
-    print('stringmatch graph length:',len(nfc.graphs['dismember'][0]))
-    
-    ## chamando o método de clusterização
-    # id_nfe2label,clusterized = nfc.cluster()
-    only_labels, clusterized = nfc.cluster()
-    # print("id_nfe2label: ",id_nfe2label)
-    print("only_labels: ",only_labels)
-    
-    Analyser().show_representatives(clusterized,n_objs=3)
-    
-    

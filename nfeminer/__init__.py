@@ -25,7 +25,7 @@ class NFeMiner:
             self.elasticsearch.index_service.create_index(self.index_name, index_file_path)
         else:
             self.elasticsearch = None
-        self.estimator = NFeMinerGTINEstimator()
+        # self.estimator = NFeMinerGTINEstimator()
         # self.clusterizer = NFeCluster()
     
     def enrichment(self, invoice_id: str, item_id: str, ncm_code: str, gtin_code: str, sales_unit: str, quantity_sold: float, unit_price: float, description: str) -> dict:
@@ -194,7 +194,24 @@ Descrição: {description}"""
             results = list(executor.map(self.estimator.gtin_classifier, descriptions))
         return results
 
-    def clustering(self, descriptions: List[str]) -> list[str]:
+    def clustering(self, descriptions: List[str]) -> dict[int,List[str]]:
+        """
+        Clusters product descriptions using semantic similarity.
+
+        Args:
+            descriptions (List[str]): List of product descriptions.
+
+        Returns:
+            label2descs (dict[int,list[str]]): Dictionary mapping cluster labels to grouped descriptions.
+        """
         nfc = NFeCluster(data=descriptions)
         only_labels, clusterized = nfc.cluster()
-        return only_labels
+        
+        label2descs = {}
+        for desc,label in list(zip(descriptions,only_labels)):
+            label = int(label)
+            if label in label2descs.keys():
+                label2descs[label].append(desc)
+            else:
+                label2descs[label] = [desc,]
+        return label2descs
