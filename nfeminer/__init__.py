@@ -25,7 +25,7 @@ class NFeMiner:
             self.elasticsearch.index_service.create_index(self.index_name, index_file_path)
         else:
             self.elasticsearch = None
-        # self.estimator = NFeMinerGTINEstimator()
+        self.estimator = NFeMinerGTINEstimator()
         # self.clusterizer = NFeCluster()
     
     def enrichment(self, invoice_id: str, item_id: str, ncm_code: str, gtin_code: str, sales_unit: str, quantity_sold: float, unit_price: float, description: str) -> dict:
