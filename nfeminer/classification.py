@@ -36,7 +36,9 @@ class NFeModelCreator:
                  data: pd.DataFrame, 
                  trusted_records: int = 100, 
                  vectorizer: str = 'TFIDF_CHAR_NGRAM',
-                 embedding: str = 'SBERT'):
+                 embedding: str = 'SBERT',
+
+        ):
         """
         Initialize the model creator with dataset, vectorizer, and embedding options.
         
@@ -298,19 +300,34 @@ class NFeMinerGTINEstimator:
     multiple matching models (string matching, n-gram vectorization, and sentence embeddings).
     """
 
-    def __init__(self, batch: pd.DataFrame = None, model: str = "all-MiniLM-L6-v2"):
+    def __init__(self, 
+                 batch: pd.DataFrame = None, 
+                 model: str = "all-MiniLM-L6-v2",
+                 n_threads: int = 0,
+                 force_cpu: bool = False,
+                 min_ngram_confidence: float = 0.5,
+                 min_embedding_confidence: float = 0.4
+        ):
         """
         Initializes the estimator, loads models, and performs classification.
 
         Args:
-            batch (pd.DataFrame): Input DataFrame with at least 'original' and 'label' columns.
+            batch (pd.DataFrame): Input DataFrame with at least 'original' and 'gtin' columns.
             model (str): SentenceTransformer model to be used for embeddings.
+            n_threads (int): Number of threads used for processing data (GPU disable).
+            force_cpu (bool): If True, forces computation on CPU (ignoring GPU availability).
+            min_ngram_confidence (float): Minimum confidence score required for an n-gram to be considered valid.
+            min_embedding_confidence (float): Minimum confidence score required for an embedding to be considered valid.
         """
         if batch is None:
             raise ValueError("Input DataFrame is required to perform estimation.")
 
         # Store input as working DataFrame
         self.results = batch.copy()
+
+        # Store confidences.
+        self.ngram_confidence = 1 - min_ngram_confidence
+        self.embedding_confidence = 1 - min_embedding_confidence
 
         # Create default columns for results
         self.results['gtin'] = None
@@ -319,11 +336,25 @@ class NFeMinerGTINEstimator:
         self.results['method'] = None
 
         # Set number of threads based on available CPU cores
-        self.num_cores = multiprocessing.cpu_count() - 1
-        torch.set_num_threads(self.num_cores)
+        n_cores = multiprocessing.cpu_count()
+        self.num_cores = (
+            n_cores - n_threads 
+            if n_threads != 0 and n_cores - n_threads > 0
+            else n_cores - 1
+        )
+
+        torch.set_num_threads(
+            n_cores
+            if self.num_cores <= 0 
+            else self.num_cores
+        )
 
         # Set device to GPU if available, otherwise CPU
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device(
+            'cuda' 
+            if torch.cuda.is_available() and not force_cpu 
+            else 'cpu'
+        )
 
         # Load SentenceTransformer model for embeddings
         self.model = SentenceTransformer(model).to(self.device)
@@ -382,16 +413,11 @@ class NFeMinerGTINEstimator:
         self.results.loc[mask, 'description_ref'] = self.results.loc[mask, 'original']
         self.results.loc[mask, 'method'] = 'string_match'
 
-        print('String-Matching:')
-        self.accuracy_measure(mask=mask)
-        print()
+        print('String-Matching: finished')
 
-    def ngram_classifier(self, threshold: float = 0.20):
+    def ngram_classifier(self):
         """
         Classifies using n-gram vectorization and 1-NN with Euclidean distance.
-
-        Args:
-            threshold (float): Distance threshold for a match to be accepted.
         """
         # Select unclassified rows
         mask = self.results['gtin'].isna()
@@ -415,7 +441,7 @@ class NFeMinerGTINEstimator:
         # Compute distances between input and reference vectors
         dists = torch.cdist(vectors_tensor, ref_vectors, p=2)
         min_dists, min_indices = torch.min(dists, dim=1)
-        matched_mask = min_dists < threshold
+        matched_mask = min_dists < self.ngram_confidence
 
         # Get indices of confident matches
         idxs_classified = [i for i, match in enumerate(matched_mask) if match]
@@ -434,18 +460,12 @@ class NFeMinerGTINEstimator:
             self.results.at[global_idx, 'description_ref'] = self.ngram_tensor_ref.at[ref_idx, 'original']
             self.results.at[global_idx, 'method'] = 'n_gram_match'
 
-        # Evaluate only classified examples
-        classified_global_indices = [global_indices[i] for i in idxs_classified]
-        print('NGRAM-Match:')
-        self.accuracy_measure(mask=classified_global_indices)
-        print()
+        print('NGRAM-Match: finished')
 
-    def embedding_classifier(self, threshold: float = 0.2):
+
+    def embedding_classifier(self):
         """
         Classifies using sentence embeddings and 1-NN with Euclidean distance.
-
-        Args:
-            threshold (float): Distance threshold for a match to be accepted.
         """
         # Select unclassified rows
         mask = self.results['gtin'].isna()
@@ -471,7 +491,7 @@ class NFeMinerGTINEstimator:
         # Compute distances
         dists = torch.cdist(embeddings_tensor, ref_vectors, p=2)
         min_dists, min_indices = torch.min(dists, dim=1)
-        matched_mask = min_dists < threshold
+        matched_mask = min_dists < self.embedding_confidence
         idxs_classified = [i for i, matched in enumerate(matched_mask) if matched]
         if not idxs_classified:
             return
@@ -488,10 +508,7 @@ class NFeMinerGTINEstimator:
             self.results.at[global_idx, 'description_ref'] = self.embedding_tensor_ref.at[ref_idx, 'original']
             self.results.at[global_idx, 'method'] = 'embedding_match'
 
-        classified_global_indices = [global_indices[i] for i in idxs_classified]
-        print('Embedding-Match:')
-        self.accuracy_measure(mask=classified_global_indices)
-        print()
+        print('Embedding-Match: finished')
 
     def accuracy_measure(self, mask):
         """
@@ -500,8 +517,52 @@ class NFeMinerGTINEstimator:
         Args:
             mask (Union[list, pd.Series]): Boolean mask or list of row indices.
         """
-        accuracy = accuracy_score(self.results.loc[mask, 'label'], self.results.loc[mask, 'gtin'])
+        accuracy = accuracy_score(self.results.loc[mask, 'gtin'], self.results.loc[mask, 'gtin'])
         print(f"Accuracy: {accuracy:.4f}")
+
+    def report(self):
+        """Generates a report of the DataFrame results, including GTIN coverage and a summary of unique combinations.
+
+        This method checks if the results DataFrame is empty or None. If not, it prints:
+          - Total number of rows in the dataset
+          - Total number of rows with non-null GTIN
+          - Percentage of rows with GTIN
+        Then, it returns a DataFrame summarizing unique combinations of
+        'original', 'description_ref', 'gtin', 'similarity', and 'method',
+        including their counts, sorted by similarity.
+
+        Returns:
+            pd.DataFrame: A DataFrame containing unique combinations of 
+                          'original', 'description_ref', 'gtin', 'similarity', and 'method',
+                          with a 'count' column and sorted by 'similarity'.
+        """
+        if self.results is None or self.results.empty:
+            print("The DataFrame is None or empty")
+        else:
+            print("Dataset report:")
+
+            # Total rows with non-null GTIN
+            total_with_gtin = self.results['gtin'].notna().sum()
+
+            # Total rows in the DataFrame
+            total_rows = len(self.results)
+
+            # Percentage of rows with GTIN
+            percentage = (total_with_gtin / total_rows) * 100
+
+            print(f"Total de registros no dataset: {total_rows}")
+            print(f"Total de registros classificados: {total_with_gtin}")
+            print(f"Porcentagem de classificação: {percentage:.2f}%")
+            print(f"Report:")
+
+            return (
+                self.results[['original', 'description_ref', 'gtin', 'similarity', 'method']]
+                .value_counts()                          # count unique combinations
+                .reset_index(name='count')               # convert to DataFrame and name count column
+                .rename(columns={0: 'count'})            # ensure count column name (depending on pandas version)
+                .sort_values(by='similarity', ascending=False)  # sort by similarity
+            )
+    
 
 if __name__ == "__main__":
     # Path to feather dataset file
@@ -563,7 +624,7 @@ if __name__ == "__main__":
 
     # Print sample and diagnostics
     print(estimator.results.head(2))
-    print(accuracy_score(estimator.results['label'], estimator.results['gtin'].fillna('Sem Valor')))
+    print(accuracy_score(estimator.results['gtin'], estimator.results['gtin'].fillna('Sem Valor')))
     print(estimator.results.loc[estimator.results['gtin'].isnull()])
     print(estimator.results.head())
     print(estimator.device)
