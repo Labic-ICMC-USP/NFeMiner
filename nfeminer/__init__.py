@@ -194,23 +194,51 @@ class NFeMiner:
         }
         return self.elasticsearch.document_service.search_documents(self.index_name, query)
 
-    def gtin_estimator(self, descriptions: List[str], gtins: List[str]) -> List[dict]:
+    def gtin_estimator(self, training_description_gtin: list[str], classify_descriptions: list[list[str, str]]) -> List[dict]:
         """
-        GTIN prediction for multiple product descriptions.
+        Predict GTIN values for multiple product descriptions.
 
         Args:
-            descriptions (List[str]): List of textual product descriptions.
-            gtins (List[str]): List of GTIN.
+            training_description_gtin (list[list[str]]):
+                List of training pairs [description, gtin] used to train the model.
+                Example:
+                    training_description_gtin = [
+                        ['Carne bovina', '465465'],
+                        ['Carne porco', '4654564']
+                    ]
+
+            classify_descriptions (list[str]):
+                List of unlabeled product descriptions for classification.
+                Example:
+                    classify_descriptions = ['carne bovina alcatra', 'porco dianteiro']
 
         Returns:
-            List[dict]: List of GTIN classification results.
+            List[dict]: List of dictionaries containing GTIN classification results.
+
+        Notes:
+            - Adjust GPU parameters, thread count, and classification threshold as needed.
         """
         import pandas as pd
-        df = pd.DataFrame({'gtin': gtins, 'original': descriptions})
 
-        NFeModelCreator(data=df)
+        # Dataframes
+        training = pd.DataFrame(training_description_gtin, columns=['original', 'gtin'])
+        unlabeled = pd.DataFrame({'original': classify_descriptions,'gtin': pd.NA})
+        
+        # Training Model
+        try:
+            NFeModelCreator(data=training)
+        except Exception as e:
+            print('Erro na criação do modelo')
+            return []
 
-        estimator = NFeMinerGTINEstimator(batch=df)
+        # Classify unlabeled descriptions
+        try:
+            estimator = NFeMinerGTINEstimator(batch=unlabeled)
+        except Exception as e:
+            print('Erro na classificação')
+            return []
+
+        # Return results
         return estimator.results['gtin'].tolist()
 
     def clustering(self, descriptions: List[str]) -> dict:
