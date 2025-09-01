@@ -249,8 +249,16 @@ class NFeMiner:
             descriptions (List[str]): List of product descriptions.
 
         Returns:
-            dict: Dictionary mapping cluster labels to grouped descriptions.
+            label2descs (dict[int,list[str]]): Dictionary mapping cluster labels to grouped descriptions.
         """
-        clusterizer = NFeCluster()
-        clusterizer.pipeline(descriptions)
-        return clusterizer.output()
+        nfc = NFeCluster(data=descriptions)
+        only_labels, clusterized = nfc.cluster()
+        
+        label2descs = {}
+        for desc,label in list(zip(descriptions,only_labels)):
+            label = int(label)
+            if label in label2descs.keys():
+                label2descs[label].append(desc)
+            else:
+                label2descs[label] = [desc,]
+        return label2descs
