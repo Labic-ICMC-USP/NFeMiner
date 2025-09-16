@@ -94,15 +94,17 @@ The general cycle can be divided into the following stages:
 ---
 
 ## **Summary of Workflow and Main Modules**
+
 1️⃣ **NFeEnrichment** → Enrichment and disambiguation of invoices.  
 2️⃣ **LLMFineTuning** → Fine-tuning of a student LLM for local processing.  
 3️⃣ **NFeClustering + SimilarityGraph** → Graph construction and clustering of similar invoices.  
 4️⃣ **NFeGtinEstimator** → GTIN estimation using ML pipelines.  
 5️⃣ **ElasticSearchIndexer** → Indexing enriched data into Elasticsearch.  
 6️⃣ **ElasticSearchExplorer** → Visual exploration of invoices via Kibana.  
+
 ---
 
-# How to Use
+## **How to Use**
 
 ⚙️ **Optional Requirement – Elasticsearch**  
 If you want to use the indexing and search features, make sure you have **Elasticsearch** installed and running.  
@@ -115,7 +117,7 @@ If your instance does **not** use the default values, configure the following en
 
 ---
 
-## 📊 Example Dataset
+## **📊 Example Dataset**
 
 Use the following data structure to represent invoices.  
 
@@ -137,7 +139,7 @@ Use the following data structure to represent invoices.
 
 ---
 
-## Example in Python
+## **Example in Python**
 
 Here is a minimal example of how to use **NFeMiner** in Python:
 
