@@ -1,3 +1,5 @@
+# **NFeMiner – Electronic Invoice Mining**
+
 ## **Processing Flow in NFeMiner**
 
 NFeMiner follows a **modular cycle**, where each step receives pre-processed data and generates a structured output for subsequent modules.  
