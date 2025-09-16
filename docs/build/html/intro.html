@@ -1,0 +1,194 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Introduction &mdash; NFeMiner 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Processing Flow" href="pipeline.html" />
+    <link rel="prev" title="NFeMiner — Project Documentation (v2.0)" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            NFeMiner
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#motivation">Motivation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#objective">Objective</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#expected-results">Expected results</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#main-components">Main components</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#edge-generators-similarity-graph">Edge generators (similarity_graph)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="pipeline.html">Processing Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">nfeminer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">NFeMiner</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Introduction</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/intro.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="introduction">
+<h1>Introduction<a class="headerlink" href="#introduction" title="Link to this heading"></a></h1>
+<section id="motivation">
+<h2>Motivation<a class="headerlink" href="#motivation" title="Link to this heading"></a></h2>
+<p>Although <strong>Electronic Invoices (NF-e)</strong> are a rich source of data about commercial transactions, they often suffer from <strong>information quality issues</strong>. The most common problems include:</p>
+<ul class="simple">
+<li><p><strong>Missing data</strong>
+Critical fields such as <strong>GTIN</strong> (product barcode), <strong>NCM</strong> (fiscal classification), or <strong>unit of measure</strong> are often left blank.</p></li>
+<li><p><strong>Non-standardized descriptions</strong>
+The same product may appear in many different formats, for example:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">RICE</span> <span class="pre">5KG</span> <span class="pre">TYPE</span> <span class="pre">1</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RICE</span> <span class="pre">TYPE</span> <span class="pre">I</span> <span class="pre">PACK</span> <span class="pre">5</span> <span class="pre">K</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">RICE</span> <span class="pre">W/</span> <span class="pre">5</span> <span class="pre">KG</span></code></p></li>
+</ul>
+</li>
+<li><p><strong>Semantic inconsistencies</strong>
+Relevant information such as packaging, brand, or quantity may be distributed across different fields or ambiguously described.</p></li>
+</ul>
+<p>These limitations have <strong>direct consequences</strong> for large-scale analysis:</p>
+<ul class="simple">
+<li><p>Difficulty in automatically identifying when <strong>two NF-e records refer to the same product</strong>, since descriptions vary by supplier or even due to typos.</p></li>
+<li><p>Inaccurate calculation of <strong>aggregate metrics</strong>, such as the average price of an item, because the same product may be scattered across different records.</p></li>
+<li><p>Lower quality of <strong>Machine Learning models</strong>, which rely on consistent attributes to learn reliable patterns.</p></li>
+<li><p>Loss of trustworthiness in contexts such as <strong>tax auditing</strong>, <strong>market research</strong>, and <strong>competitiveness analysis</strong>.</p></li>
+</ul>
+</section>
+<section id="objective">
+<h2>Objective<a class="headerlink" href="#objective" title="Link to this heading"></a></h2>
+<p>The <strong>NFeMiner</strong> project aims to <strong>restore the structure and identity of products</strong> within NF-e records by means of:</p>
+<ul class="simple">
+<li><p><strong>Semantic enrichment</strong> of descriptions (extracting packaging, measurements, brand, categories).</p></li>
+<li><p><strong>Clustering of similar invoices</strong> into graphs (clusters of the “same product”).</p></li>
+<li><p><strong>GTIN estimation</strong> when the code is missing or inconsistent.</p></li>
+<li><p><strong>Efficient indexing and search</strong> for analytical exploration (Elasticsearch/Kibana).</p></li>
+</ul>
+</section>
+<section id="expected-results">
+<h2>Expected results<a class="headerlink" href="#expected-results" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Deduplication/normalization</strong> of equivalent items.</p></li>
+<li><p><strong>Enriched JSON</strong> validated for each item (Pydantic schema).</p></li>
+<li><p><strong>Clusters</strong> with labels assigned by community detection and label propagation algorithms.</p></li>
+<li><p><strong>GTIN assignment</strong> with confidence rules and multiple matching strategies.</p></li>
+<li><p><strong>Fast querying</strong> and <strong>dashboards</strong> for price and trend analysis.</p></li>
+</ul>
+</section>
+<section id="main-components">
+<h2>Main components<a class="headerlink" href="#main-components" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><strong>Classification (GTIN)</strong> — <code class="docutils literal notranslate"><span class="pre">NFeModelCreator</span></code> and <code class="docutils literal notranslate"><span class="pre">NFeMinerGTINEstimator</span></code>
+- <em>String Matching</em>: dictionary of unique descriptions.
+- <em>Vectorizers + 1-NN</em>: TF-IDF / BoW (word/char/char-n-gram).
+- <em>Sentence-BERT</em>: semantic embeddings for similarity.</p></li>
+<li><p><strong>Graphs and Clustering</strong> — <code class="docutils literal notranslate"><span class="pre">CGraph</span></code>, <code class="docutils literal notranslate"><span class="pre">Analyser</span></code> and <em>edge generators</em>
+- Edge generation via <strong>string match</strong>, <strong>BERT embeddings</strong>, <strong>NCM</strong>, <strong>value ranges</strong>.
+- NetworkX algorithms: <em>clique</em>, <em>label propagation</em>, <em>greedy modularity</em>, <em>bisection</em>, <em>girvan–newman</em>.
+- <strong>Semi-supervised</strong> with label propagation and <strong>group merging</strong> for refinement.</p></li>
+<li><p><strong>Enrichment</strong> — <code class="docutils literal notranslate"><span class="pre">NFeMinerBaseGenerateModel</span></code> (+ local/OpenRouter/Ollama implementations)
+- Generation of structured JSON (packaging, physical features, brand, origin, categories, tags).
+- Validation schema with <strong>Pydantic</strong>.</p></li>
+<li><p><strong>Elasticsearch</strong> — <code class="docutils literal notranslate"><span class="pre">NFeMinerElasticSearch</span></code>
+- Facade for indexing, updating, deleting, and searching.
+- Separate services for <strong>documents</strong> and <strong>indices</strong>.</p></li>
+<li><p><strong>Fine-tuning</strong> — <code class="docutils literal notranslate"><span class="pre">NFeFinetuner</span></code>
+- Pipeline with <strong>PEFT</strong> and <strong>SFT</strong> to train a local “student” model from enriched data.</p></li>
+</ul>
+</section>
+<section id="edge-generators-similarity-graph">
+<h2>Edge generators (similarity_graph)<a class="headerlink" href="#edge-generators-similarity-graph" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">StringMatchEdgeGenerator</span></code> — pairs with high similarity (<code class="docutils literal notranslate"><span class="pre">difflib.SequenceMatcher</span></code>).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">BERTEmbeddingEdgeGenerator</span></code> — pairs by semantic similarity (Sentence-BERT, cosine).</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">NCMSimilarityEdgeGenerator</span></code> — pairs that share the same NCM.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">ValueRangeEdgeGenerator</span></code> / <code class="docutils literal notranslate"><span class="pre">PriceBandEdgeGenerator</span></code> — pairs within numeric bands/ranges.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">build_graph</span></code> — builds NetworkX graphs from node/edge DataFrames.</p></li>
+</ul>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="NFeMiner — Project Documentation (v2.0)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="pipeline.html" class="btn btn-neutral float-right" title="Processing Flow" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, ..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

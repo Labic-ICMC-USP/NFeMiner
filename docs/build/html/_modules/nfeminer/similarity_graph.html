@@ -1,0 +1,521 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nfeminer.similarity_graph &mdash; NFeMiner 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            NFeMiner
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pipeline.html">Processing Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">nfeminer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">NFeMiner</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../nfeminer.html">nfeminer</a></li>
+      <li class="breadcrumb-item active">nfeminer.similarity_graph</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for nfeminer.similarity_graph</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">networkx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nx</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sentence_transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SentenceTransformer</span><span class="p">,</span> <span class="n">util</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">difflib</span><span class="w"> </span><span class="kn">import</span> <span class="n">SequenceMatcher</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Optional</span>
+
+<div class="viewcode-block" id="EdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.EdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">EdgeGenerator</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">df</span> <span class="o">=</span> <span class="n">df</span>
+    
+<div class="viewcode-block" id="EdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.EdgeGenerator.generate_edges">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Must return a DataFrame with columns:</span>
+<span class="sd">        source, target, edge_type, similarity_score</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+</div>
+
+
+<div class="viewcode-block" id="build_graph">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.build_graph">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">build_graph</span><span class="p">(</span><span class="n">nodes_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">edges_df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> <span class="n">column_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;id_nfe&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build a NetworkX Graph from node and edge pandas DataFrames.</span>
+
+<span class="sd">    Each row in `nodes_df` becomes a node; the node identifier is taken from</span>
+<span class="sd">    the column specified by `column_name`. Each row in `edges_df` becomes an</span>
+<span class="sd">    edge and must contain `source` and `target` columns with node identifiers.</span>
+<span class="sd">    All other columns from the rows are set as node/edge attributes.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        nodes_df (pd.DataFrame): DataFrame where each row represents a node.</span>
+<span class="sd">        edges_df (pd.DataFrame): DataFrame where each row represents an edge.</span>
+<span class="sd">        column_name (str): Column name in `nodes_df` that contains the node id.</span>
+<span class="sd">            Defaults to `&#39;id_nfe&#39;`.</span>
+
+<span class="sd">    Returns:</span>
+<span class="sd">        nx.Graph: A NetworkX graph with node and edge attributes populated</span>
+<span class="sd">            from the DataFrame rows.</span>
+
+<span class="sd">    Raises:</span>
+<span class="sd">        KeyError: If `column_name` is missing in `nodes_df` or if `edges_df`</span>
+<span class="sd">            does not contain the required `source` and `target` columns.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">column_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">nodes_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;nodes_df must contain the &#39;</span><span class="si">{</span><span class="n">column_name</span><span class="si">}</span><span class="s2">&#39; column.&quot;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="s1">&#39;source&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edges_df</span><span class="o">.</span><span class="n">columns</span> <span class="ow">or</span> <span class="s1">&#39;target&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">edges_df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s2">&quot;edges_df must contain &#39;source&#39; and &#39;target&#39; columns.&quot;</span><span class="p">)</span>
+
+    <span class="n">G</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">()</span>
+
+    <span class="c1"># Add nodes with attributes (exclude the id column from attributes)</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">nodes_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">node_id</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="n">column_name</span><span class="p">]</span>
+        <span class="n">attrs</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+        <span class="n">attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">column_name</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">G</span><span class="o">.</span><span class="n">add_node</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="o">**</span><span class="n">attrs</span><span class="p">)</span>
+
+    <span class="c1"># Add edges with attributes (exclude source/target from attributes)</span>
+    <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">edges_df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+        <span class="n">src</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;source&quot;</span><span class="p">]</span>
+        <span class="n">tgt</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s2">&quot;target&quot;</span><span class="p">]</span>
+        <span class="n">attrs</span> <span class="o">=</span> <span class="n">row</span><span class="o">.</span><span class="n">to_dict</span><span class="p">()</span>
+        <span class="n">attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;source&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">attrs</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s2">&quot;target&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">G</span><span class="o">.</span><span class="n">add_edge</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">tgt</span><span class="p">,</span> <span class="o">**</span><span class="n">attrs</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">G</span></div>
+
+
+<div class="viewcode-block" id="BERTEmbeddingEdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.BERTEmbeddingEdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">BERTEmbeddingEdgeGenerator</span><span class="p">(</span><span class="n">EdgeGenerator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate graph edges based on SentenceBERT semantic similarity.</span>
+
+<span class="sd">    This edge generator encodes texts using a SentenceTransformer and</span>
+<span class="sd">    produces an edge list with cosine similarity scores between distinct</span>
+<span class="sd">    document pairs.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model (SentenceTransformer): SentenceTransformer instance used to encode texts.</span>
+<span class="sd">        df (pd.DataFrame): Input DataFrame provided by the base class.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
+        <span class="n">model</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">SentenceTransformer</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;sentence-transformers/all-MiniLM-L6-v2&#39;</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the edge generator.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            df (pd.DataFrame): Input DataFrame. Must contain a column matching</span>
+<span class="sd">                `ID_NFE_COLUMN` (passed in generate_edges) and the text column you will pass to `generate_edges`.</span>
+<span class="sd">            model (str | SentenceTransformer): If a string, the corresponding</span>
+<span class="sd">                SentenceTransformer model is loaded; if an instance is provided,</span>
+<span class="sd">                it is used directly. Defaults to &#39;sentence-transformers/all-MiniLM-L6-v2&#39;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">df</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="nb">str</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+
+<div class="viewcode-block" id="BERTEmbeddingEdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.BERTEmbeddingEdgeGenerator.generate_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_text</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;text&#39;</span><span class="p">,</span><span class="n">ID_NFE_COLUMN</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="s1">&#39;id_nfe&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Compute pairwise semantic similarity and return edges with scores.</span>
+
+<span class="sd">        For every pair of distinct rows (i, j) with i &lt; j, this function</span>
+<span class="sd">        computes the cosine similarity between their SentenceBERT embeddings</span>
+<span class="sd">        and returns a DataFrame with columns:</span>
+<span class="sd">            [&#39;source&#39;, &#39;target&#39;, &#39;edge_type&#39;, &#39;similarity_score&#39;]</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field_text (str): Name of the column in `self.df` containing text.</span>
+<span class="sd">                Defaults to &#39;text&#39;.</span>
+<span class="sd">            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is &#39;id_nfe&#39;</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: Edge list with similarity scores.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            KeyError: If `ID_NFE_COLUMN` or `field_text` is missing in `self.df`.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">ID_NFE_COLUMN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must contain &#39;</span><span class="si">{</span><span class="n">ID_NFE_COLUMN</span><span class="si">}</span><span class="s2">&#39; column.&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">field_text</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must contain &#39;</span><span class="si">{</span><span class="n">field_text</span><span class="si">}</span><span class="s2">&#39; column.&quot;</span><span class="p">)</span>
+
+        <span class="n">texts</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">field_text</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s2">&quot;&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+        <span class="n">ids</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+        <span class="c1"># Encode texts to embeddings (tensor). Let SentenceTransformer handle device placement.</span>
+        <span class="n">embeddings</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">texts</span><span class="p">,</span> <span class="n">convert_to_tensor</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Compute pairwise cosine similarity matrix (torch tensor)</span>
+        <span class="n">sim_matrix</span> <span class="o">=</span> <span class="n">util</span><span class="o">.</span><span class="n">pytorch_cos_sim</span><span class="p">(</span><span class="n">embeddings</span><span class="p">,</span> <span class="n">embeddings</span><span class="p">)</span>
+
+        <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">num_rows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ids</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_rows</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">num_rows</span><span class="p">):</span>
+                <span class="n">score</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sim_matrix</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
+                <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="n">ids</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                    <span class="s1">&#39;target&#39;</span><span class="p">:</span> <span class="n">ids</span><span class="p">[</span><span class="n">j</span><span class="p">],</span>
+                    <span class="s1">&#39;edge_type&#39;</span><span class="p">:</span> <span class="s1">&#39;bert-similarity&#39;</span><span class="p">,</span>
+                    <span class="s1">&#39;similarity_score&#39;</span><span class="p">:</span> <span class="n">score</span>
+                <span class="p">})</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NCMSimilarityEdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.NCMSimilarityEdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NCMSimilarityEdgeGenerator</span><span class="p">(</span><span class="n">EdgeGenerator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate edges between records that share the same NCM value.</span>
+
+<span class="sd">    This edge generator creates an undirected edge with similarity score 1</span>
+<span class="sd">    for every distinct pair of rows in the DataFrame that have identical</span>
+<span class="sd">    values in the specified NCM column.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="NCMSimilarityEdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.NCMSimilarityEdgeGenerator.generate_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_ncm</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;ncm&#39;</span><span class="p">,</span><span class="n">ID_NFE_COLUMN</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="s1">&#39;id_nfe&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create edges between rows with equal NCM codes.</span>
+
+<span class="sd">        For each group of rows sharing the same `field_ncm` value, this method</span>
+<span class="sd">        emits an edge for every unique pair (i, j) with i &lt; j.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            field_ncm (str): Column name containing the NCM code. Defaults to &#39;ncm&#39;.</span>
+<span class="sd">            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is &#39;id_nfe&#39;</span>
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: DataFrame with columns [&#39;source&#39;, &#39;target&#39;, &#39;edge_type&#39;, &#39;similarity_score&#39;].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">grouped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">field_ncm</span><span class="p">)</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">ncm</span><span class="p">,</span> <span class="n">subdf</span> <span class="ow">in</span> <span class="n">grouped</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">iidx</span><span class="p">,</span> <span class="n">row_i</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="p">(</span><span class="n">jidx</span><span class="p">,</span> <span class="n">row_j</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">j</span><span class="p">:</span>
+                        <span class="k">continue</span>
+
+                    <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">row_i</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="n">row_j</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;edge_type&quot;</span><span class="p">:</span> <span class="s2">&quot;ncm_similarity&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;similarity_score&quot;</span><span class="p">:</span> <span class="mi">1</span>
+                    <span class="p">})</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="ValueRangeEdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.ValueRangeEdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ValueRangeEdgeGenerator</span><span class="p">(</span><span class="n">EdgeGenerator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate edges for rows whose numeric field falls within a given range.</span>
+
+<span class="sd">    Edges are produced only between rows that:</span>
+<span class="sd">      * belong to the same group (field_group), and</span>
+<span class="sd">      * have the `field_valor` value inside (min_value, max_value).</span>
+
+<span class="sd">    The produced edge&#39;s `similarity_score` is the (possibly normalized) value</span>
+<span class="sd">    taken from the `field_valor` column.</span>
+
+<span class="sd">    Note:</span>
+<span class="sd">        This implementation emits an edge for each unique pair (i, j) with i &lt; j</span>
+<span class="sd">        inside each group (no cross-group edges).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="ValueRangeEdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.ValueRangeEdgeGenerator.generate_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">min_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+        <span class="n">max_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+        <span class="n">normalize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">field_valor</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;valor&#39;</span><span class="p">,</span>
+        <span class="n">field_group</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;unidade&#39;</span><span class="p">,</span>
+        <span class="n">ID_NFE_COLUMN</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="s1">&#39;id_nfe&#39;</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create edges for records with `field_valor` inside [min_value, max_value].</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            min_value (float | None): Lower bound for `field_valor`. If None, the</span>
+<span class="sd">                minimum value from `self.df[field_valor]` is used.</span>
+<span class="sd">            max_value (float | None): Upper bound for `field_valor`. If None, the</span>
+<span class="sd">                maximum value from `self.df[field_valor]` is used.</span>
+<span class="sd">            normalize (bool): If True, the similarity score is normalized to [0, 1]</span>
+<span class="sd">                using (value - min_value) / (max_value - min_value).</span>
+<span class="sd">            field_valor (str): Column name that contains the numeric value.</span>
+<span class="sd">            field_group (str): Column name used to group rows (edges only inside group).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: DataFrame with columns [&#39;source&#39;, &#39;target&#39;, &#39;edge_type&#39;, &#39;similarity_score&#39;].</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            KeyError: If required columns are missing from the DataFrame.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Basic validations</span>
+        <span class="k">if</span> <span class="n">field_valor</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must contain column &#39;</span><span class="si">{</span><span class="n">field_valor</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">field_group</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must contain column &#39;</span><span class="si">{</span><span class="n">field_group</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ID_NFE_COLUMN</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;DataFrame must contain column &#39;</span><span class="si">{</span><span class="n">ID_NFE_COLUMN</span><span class="si">}</span><span class="s2">&#39;&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Resolve min/max if not provided</span>
+        <span class="k">if</span> <span class="n">min_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">field_valor</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">())</span>
+        <span class="k">if</span> <span class="n">max_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">max_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">field_valor</span><span class="p">]</span><span class="o">.</span><span class="n">max</span><span class="p">())</span>
+
+        <span class="n">grouped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="n">field_group</span><span class="p">)</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">group_val</span><span class="p">,</span> <span class="n">subdf</span> <span class="ow">in</span> <span class="n">grouped</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">iidx</span><span class="p">,</span> <span class="n">row_i</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="p">(</span><span class="n">jidx</span><span class="p">,</span> <span class="n">row_j</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subdf</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">j</span><span class="p">:</span>
+                        <span class="k">continue</span>
+
+                    <span class="n">sim</span> <span class="o">=</span> <span class="n">row_i</span><span class="p">[</span><span class="n">field_valor</span><span class="p">]</span>
+                    <span class="c1"># check range (open interval as in original: min_value &lt; sim &lt; max_value)</span>
+                    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">min_value</span> <span class="o">&lt;</span> <span class="n">sim</span> <span class="ow">and</span> <span class="n">sim</span> <span class="o">&lt;</span> <span class="n">max_value</span><span class="p">):</span>
+                        <span class="k">continue</span>
+
+                    <span class="k">if</span> <span class="n">normalize</span><span class="p">:</span>
+                        <span class="n">denom</span> <span class="o">=</span> <span class="p">(</span><span class="n">max_value</span> <span class="o">-</span> <span class="n">min_value</span><span class="p">)</span>
+                        <span class="c1"># avoid division by zero</span>
+                        <span class="k">if</span> <span class="n">denom</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                            <span class="n">sim</span> <span class="o">=</span> <span class="mf">0.0</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">sim</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span> <span class="o">-</span> <span class="n">min_value</span><span class="p">)</span> <span class="o">/</span> <span class="n">denom</span>
+
+                    <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">row_i</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="n">row_j</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;edge_type&quot;</span><span class="p">:</span> <span class="s2">&quot;value_range&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;similarity_score&quot;</span><span class="p">:</span> <span class="n">sim</span>
+                    <span class="p">})</span>
+
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="StringMatchEdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.StringMatchEdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">StringMatchEdgeGenerator</span><span class="p">(</span><span class="n">EdgeGenerator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generate edges between records whose text fields are nearly identical.</span>
+
+<span class="sd">    This generator uses difflib.SequenceMatcher to compute a similarity ratio</span>
+<span class="sd">    between two strings and emits an edge when the ratio exceeds a threshold </span>
+<span class="sd">    (0.95 by default).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+<div class="viewcode-block" id="StringMatchEdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.StringMatchEdgeGenerator.generate_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field_str</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;descricao&#39;</span><span class="p">,</span><span class="n">threshold</span><span class="o">=</span><span class="mf">0.95</span><span class="p">,</span><span class="n">ID_NFE_COLUMN</span><span class="o">=</span><span class="s1">&#39;id_nfe&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create edges for highly similar string pairs.</span>
+
+<span class="sd">        For every unique pair of rows (i, j) with i &lt; j, this method computes</span>
+<span class="sd">        the SequenceMatcher ratio between the values in `field_str`. If the</span>
+<span class="sd">        similarity ratio is greater than threshold, an undirected edge is emitted</span>
+<span class="sd">        with `edge_type` == &quot;string_match&quot; and `similarity_score` equal to the ratio.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field_str (str): Column name containing the text to compare.</span>
+<span class="sd">                Defaults to &#39;descricao&#39;.</span>
+<span class="sd">            threshold (float): Determines the minimal similarity to construct an edge. By </span>
+<span class="sd">                default, it&#39;s 0.95.</span>
+<span class="sd">            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is &#39;id_nfe&#39;</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: DataFrame with columns [&#39;source&#39;, &#39;target&#39;, &#39;edge_type&#39;, &#39;similarity_score&#39;].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">row_i</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">row_j</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">():</span>
+                <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">j</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                <span class="n">sim</span> <span class="o">=</span> <span class="n">SequenceMatcher</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">row_i</span><span class="p">[</span><span class="n">field_str</span><span class="p">],</span> <span class="n">row_j</span><span class="p">[</span><span class="n">field_str</span><span class="p">])</span><span class="o">.</span><span class="n">ratio</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">sim</span> <span class="o">&gt;</span> <span class="n">threshold</span><span class="p">:</span>
+                    <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                        <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">row_i</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="n">row_j</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                        <span class="s2">&quot;edge_type&quot;</span><span class="p">:</span> <span class="s2">&quot;string_match&quot;</span><span class="p">,</span>
+                        <span class="s2">&quot;similarity_score&quot;</span><span class="p">:</span> <span class="n">sim</span>
+                    <span class="p">})</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="PriceBandEdgeGenerator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.PriceBandEdgeGenerator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">PriceBandEdgeGenerator</span><span class="p">(</span><span class="n">EdgeGenerator</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Edge generator based on the &#39;valor&#39; field (price or numeric attribute). </span>
+<span class="sd">    </span>
+<span class="sd">    This generator creates edges between nodes only if their associated &#39;valor&#39;</span>
+<span class="sd">    lies within a specified numeric band (`min_value`, `max_value`). </span>
+<span class="sd">    The `similarity_score` of each edge corresponds to the value itself and can </span>
+<span class="sd">    optionally be normalized to the [0,1] range, based on the given bounds.</span>
+<span class="sd">    </span>
+<span class="sd">    Typical use case: grouping or connecting nodes that fall into the same price</span>
+<span class="sd">    range or value interval.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+        
+<div class="viewcode-block" id="PriceBandEdgeGenerator.generate_edges">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.similarity_graph.PriceBandEdgeGenerator.generate_edges">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate_edges</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                       <span class="n">min_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                       <span class="n">max_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
+                       <span class="n">normalize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                       <span class="n">field_valor</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;valor&#39;</span><span class="p">,</span>
+                       <span class="n">ID_NFE_COLUMN</span><span class="o">=</span><span class="s1">&#39;id_nfe&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate edges between nodes based on whether their value field </span>
+<span class="sd">        falls within a specified price band.</span>
+
+<span class="sd">        Edges are generated only if the field value is within the specified</span>
+<span class="sd">        &#39;min_value&#39; and &#39;max_value&#39; range. The &#39;similarity_score&#39; is equal </span>
+<span class="sd">        to the node&#39;s value and can be normalized.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            min_value (float): Minimum value of the &#39;valor&#39; field. If None, </span>
+<span class="sd">                the minimum found in the dataset is used.</span>
+<span class="sd">            max_value (float): Maximum value of the &#39;valor&#39; field. If None, </span>
+<span class="sd">                the maximum found in the dataset is used.</span>
+<span class="sd">            normalize (bool): If True, applies normalization to the </span>
+<span class="sd">                similarity score. Normalization maps:</span>
+<span class="sd">                    - &#39;min_value&#39; (if not None) → 0</span>
+<span class="sd">                    - &#39;max_value&#39; (if not None) → 1</span>
+<span class="sd">            field_valor (str): Column name containing the value field.</span>
+<span class="sd">            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is &#39;id_nfe&#39;</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: A DataFrame containing the generated edges, </span>
+<span class="sd">            with columns [&#39;source&#39;, &#39;target&#39;, &#39;edge_type&#39;, &#39;similarity_score&#39;].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+                
+        <span class="k">if</span> <span class="n">min_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">min_value</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">field_valor</span><span class="p">])</span>
+        <span class="k">if</span> <span class="n">max_value</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">max_value</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="p">[</span><span class="n">field_valor</span><span class="p">])</span>
+            
+        <span class="n">edges</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="p">(</span><span class="n">iidx</span><span class="p">,</span> <span class="n">row_i</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+            <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="p">(</span><span class="n">jidx</span><span class="p">,</span> <span class="n">row_j</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">df</span><span class="o">.</span><span class="n">iterrows</span><span class="p">()):</span>
+                
+                <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;=</span> <span class="n">j</span><span class="p">:</span>
+                    <span class="k">continue</span>
+                
+                <span class="n">sim</span> <span class="o">=</span> <span class="n">row_i</span><span class="p">[</span><span class="n">field_valor</span><span class="p">]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">min_value</span> <span class="o">&lt;</span> <span class="n">sim</span> <span class="ow">and</span> <span class="n">sim</span> <span class="o">&lt;</span> <span class="n">max_value</span><span class="p">):</span>
+                    <span class="k">continue</span>
+                
+                <span class="k">if</span> <span class="n">normalize</span><span class="p">:</span>
+                    <span class="n">sim</span> <span class="o">=</span> <span class="p">(</span><span class="n">sim</span> <span class="o">-</span> <span class="n">min_value</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">max_value</span> <span class="o">-</span> <span class="n">min_value</span><span class="p">)</span>
+                
+                <span class="n">edges</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s2">&quot;source&quot;</span><span class="p">:</span> <span class="n">row_i</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                    <span class="s2">&quot;target&quot;</span><span class="p">:</span> <span class="n">row_j</span><span class="p">[</span><span class="n">ID_NFE_COLUMN</span><span class="p">],</span>
+                    <span class="s2">&quot;edge_type&quot;</span><span class="p">:</span> <span class="s2">&quot;price_band&quot;</span><span class="p">,</span>
+                    <span class="s2">&quot;similarity_score&quot;</span><span class="p">:</span> <span class="n">sim</span>
+                <span class="p">})</span>
+        <span class="k">return</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">edges</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, ..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

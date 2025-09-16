@@ -1,0 +1,385 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nfeminer &mdash; NFeMiner 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            NFeMiner
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../pipeline.html">Processing Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../modules.html">nfeminer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">NFeMiner</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Module code</a></li>
+      <li class="breadcrumb-item active">nfeminer</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for nfeminer</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">.enrichment</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerBaseGenerateModel</span><span class="p">,</span> <span class="n">NFeMinerJSONValidator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.elasticsearch</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerElasticSearch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.classification</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">,</span> <span class="n">NFeModelCreator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.clustering</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeCluster</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
+
+<div class="viewcode-block" id="NFeMiner">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMiner</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Facade for semantic enrichment of NFe (Brazilian electronic invoice) items using a pluggable language model.</span>
+
+<span class="sd">    This class wraps an instance of a language model compatible with the `NFeMinerBaseGenerateModel` interface and</span>
+<span class="sd">    extends its functionality with GTIN estimation, product clustering, and integration with Elasticsearch</span>
+<span class="sd">    for indexing and searching enriched data.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model (NFeMinerBaseGenerateModel): The language model used for generating structured outputs.</span>
+<span class="sd">        elasticsearch (NFeMinerElasticSearch): Interface for indexing and searching enriched documents.</span>
+<span class="sd">        estimator (NFeMinerGTINEstimator): Classifier for predicting GTIN from item descriptions.</span>
+<span class="sd">        clusterizer (NFeCluster): Component for clustering product descriptions.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        model (NFeMinerBaseGenerateModel): Instance of a compatible model that implements `json_generate`.</span>
+<span class="sd">        index_file_path (str): Path to a JSON or CSV file containing products to index. If None, indexing is skipped.</span>
+<span class="sd">        index_name (str, optional): Name of the Elasticsearch index to use. Defaults to &quot;nfe_products&quot;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">NFeMinerBaseGenerateModel</span><span class="p">,</span> <span class="n">index_file_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">index_name</span><span class="o">=</span><span class="s2">&quot;nfe_products&quot;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">model</span>
+        <span class="k">if</span> <span class="n">index_file_path</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span> <span class="o">=</span> <span class="n">NFeMinerElasticSearch</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">index_name</span> <span class="o">=</span> <span class="n">index_name</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">index_service</span><span class="o">.</span><span class="n">create_index</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">index_file_path</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span> <span class="o">=</span> <span class="kc">None</span>
+
+<div class="viewcode-block" id="NFeMiner.enrichment">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.enrichment">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">enrichment</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">invoice_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">item_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">ncm_code</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">gtin_code</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+                   <span class="n">sales_unit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">quantity_sold</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit_price</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Performs semantic enrichment using the model with structured input fields.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            invoice_id (str): Unique identifier of the electronic invoice (NFe).</span>
+<span class="sd">            item_id (str): Identifier of the item within the invoice.</span>
+<span class="sd">            ncm_code (str): Mercosur Common Nomenclature (NCM) code for tax classification.</span>
+<span class="sd">            gtin_code (str): Global Trade Item Number (GTIN), e.g., barcode.</span>
+<span class="sd">            sales_unit (str): Unit of measure used for selling the item (e.g., &quot;kg&quot;, &quot;pcs&quot;).</span>
+<span class="sd">            quantity_sold (float): Quantity of the item sold.</span>
+<span class="sd">            unit_price (float): Price per unit of the item.</span>
+<span class="sd">            description (str): Natural language description of the product.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Structured enrichment output returned by the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">json_generate</span><span class="p">(</span><span class="n">invoice_id</span><span class="p">,</span> <span class="n">item_id</span><span class="p">,</span> <span class="n">ncm_code</span><span class="p">,</span> <span class="n">gtin_code</span><span class="p">,</span> <span class="n">sales_unit</span><span class="p">,</span>
+                                        <span class="n">quantity_sold</span><span class="p">,</span> <span class="n">unit_price</span><span class="p">,</span> <span class="n">description</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.enrichment_and_index">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.enrichment_and_index">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">enrichment_and_index</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">raw_data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">]],</span> <span class="n">batch_size</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">500</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Performs enrichment on raw input data and indexes the result into Elasticsearch.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            raw_data (Union[Dict, List[Dict]]): Single or list of dictionaries containing input fields.</span>
+<span class="sd">            batch_size (int, optional): Number of documents to index per batch. Defaults to 500.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            Dict[str, str]: Dictionary with success message and document count.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the input format is invalid or required fields are missing.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">enriched_data</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">enrichment</span><span class="p">(</span><span class="o">**</span><span class="n">raw_data</span><span class="p">)]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">raw_data</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="n">enriched_data</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">enrichment</span><span class="p">(</span><span class="o">**</span><span class="n">item</span><span class="p">)</span> <span class="k">for</span> <span class="n">item</span> <span class="ow">in</span> <span class="n">raw_data</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input data must be a dictionary or list of dictionaries.&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">index_documents</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">enriched_data</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="n">batch_size</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.search_string">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.search_string">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">search_string</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Performs full-text search across all fields in the index.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            value (str): Search string.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Search results from Elasticsearch.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;query_string&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="n">value</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">search_documents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.search_all">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.search_all">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">search_all</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Retrieves all documents stored in the index.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: All indexed documents.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;match_all&quot;</span><span class="p">:</span> <span class="p">{}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">search_documents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.search_numeric_term">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.search_numeric_term">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">search_numeric_term</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="nb">float</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Searches for documents with an exact numeric value in the specified field.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field (str): Field name to filter.</span>
+<span class="sd">            value (int | float): Exact value to match.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Matching documents.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;term&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="n">field</span><span class="p">:</span> <span class="n">value</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">search_documents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.search_numeric_range">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.search_numeric_range">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">search_numeric_range</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">field</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">gte</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">lte</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Filters documents where a numeric field falls within a given range.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            field (str): Field name to filter.</span>
+<span class="sd">            gte (float, optional): Minimum value (inclusive).</span>
+<span class="sd">            lte (float, optional): Maximum value (inclusive).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Matching documents.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">range_query</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">gte</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">range_query</span><span class="p">[</span><span class="s2">&quot;gte&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">gte</span>
+        <span class="k">if</span> <span class="n">lte</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">range_query</span><span class="p">[</span><span class="s2">&quot;lte&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">lte</span>
+
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;range&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="n">field</span><span class="p">:</span> <span class="n">range_query</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">search_documents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.search_combined">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.search_combined">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">search_combined</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">must</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">should</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[],</span> <span class="n">must_not</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">[])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Executes a boolean query with must, should, and must_not clauses.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            must (List[dict]): Conditions that must be satisfied.</span>
+<span class="sd">            should (List[dict]): Optional conditions that boost relevance.</span>
+<span class="sd">            must_not (List[dict]): Conditions that must be excluded.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Search results from Elasticsearch.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">query</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="p">{</span>
+                <span class="s2">&quot;bool&quot;</span><span class="p">:</span> <span class="p">{</span>
+                    <span class="s2">&quot;must&quot;</span><span class="p">:</span> <span class="n">must</span><span class="p">,</span>
+                    <span class="s2">&quot;should&quot;</span><span class="p">:</span> <span class="n">should</span><span class="p">,</span>
+                    <span class="s2">&quot;must_not&quot;</span><span class="p">:</span> <span class="n">must_not</span>
+                <span class="p">}</span>
+            <span class="p">}</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">elasticsearch</span><span class="o">.</span><span class="n">document_service</span><span class="o">.</span><span class="n">search_documents</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">index_name</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.gtin_estimator">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.gtin_estimator">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">gtin_estimator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">training_description_gtin</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">classify_descriptions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Predict GTIN values for multiple product descriptions.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            training_description_gtin (list[list[str]]):</span>
+<span class="sd">                List of training pairs [description, gtin] used to train the model.</span>
+<span class="sd">                Example:</span>
+<span class="sd">                    training_description_gtin = [</span>
+<span class="sd">                        [&#39;Carne bovina&#39;, &#39;465465&#39;],</span>
+<span class="sd">                        [&#39;Carne porco&#39;, &#39;4654564&#39;]</span>
+<span class="sd">                    ]</span>
+
+<span class="sd">            classify_descriptions (list[str]):</span>
+<span class="sd">                List of unlabeled product descriptions for classification.</span>
+<span class="sd">                Example:</span>
+<span class="sd">                    classify_descriptions = [&#39;carne bovina alcatra&#39;, &#39;porco dianteiro&#39;]</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            List[dict]: List of dictionaries containing GTIN classification results.</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            - Adjust GPU parameters, thread count, and classification threshold as needed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+
+        <span class="c1"># Dataframes</span>
+        <span class="n">training</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">training_description_gtin</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">])</span>
+        <span class="n">unlabeled</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;original&#39;</span><span class="p">:</span> <span class="n">classify_descriptions</span><span class="p">,</span><span class="s1">&#39;gtin&#39;</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">})</span>
+        
+        <span class="c1"># Training Model</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">NFeModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Erro na criação do modelo&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c1"># Classify unlabeled descriptions</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">estimator</span> <span class="o">=</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">(</span><span class="n">batch</span><span class="o">=</span><span class="n">unlabeled</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Erro na classificação&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="c1"># Return results</span>
+        <span class="k">return</span> <span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span></div>
+
+
+<div class="viewcode-block" id="NFeMiner.clustering">
+<a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.clustering">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clustering</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">descriptions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Clusters product descriptions using semantic similarity.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            descriptions (List[str]): List of product descriptions.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            label2descs (dict[int,list[str]]): Dictionary mapping cluster labels to grouped descriptions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">nfc</span> <span class="o">=</span> <span class="n">NFeCluster</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">descriptions</span><span class="p">)</span>
+        <span class="n">only_labels</span><span class="p">,</span> <span class="n">clusterized</span> <span class="o">=</span> <span class="n">nfc</span><span class="o">.</span><span class="n">cluster</span><span class="p">()</span>
+        
+        <span class="n">label2descs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">desc</span><span class="p">,</span><span class="n">label</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span><span class="n">only_labels</span><span class="p">)):</span>
+            <span class="n">label</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">label2descs</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
+                <span class="n">label2descs</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">desc</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">label2descs</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">desc</span><span class="p">,]</span>
+        <span class="k">return</span> <span class="n">label2descs</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, ..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

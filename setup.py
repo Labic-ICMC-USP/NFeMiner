@@ -7,7 +7,7 @@ LONG_DESCRIPTION = 'NFeMiner'
 setup(
         name="nfeminer", 
         version=VERSION,
-        author="Labic",
+        author="LABIC",
         author_email="<youremail@email.com>",
         description=DESCRIPTION,
         long_description=LONG_DESCRIPTION,

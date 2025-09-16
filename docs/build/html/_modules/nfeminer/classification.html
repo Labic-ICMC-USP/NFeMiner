@@ -1,0 +1,774 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nfeminer.classification &mdash; NFeMiner 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            NFeMiner
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pipeline.html">Processing Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">nfeminer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">NFeMiner</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../nfeminer.html">nfeminer</a></li>
+      <li class="breadcrumb-item active">nfeminer.classification</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for nfeminer.classification</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">multiprocessing</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">sys</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sentence_transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">SentenceTransformer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.feature_extraction.text</span><span class="w"> </span><span class="kn">import</span> <span class="n">CountVectorizer</span><span class="p">,</span> <span class="n">TfidfVectorizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">accuracy_score</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Normalizer</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_pipeline</span>
+
+<div class="viewcode-block" id="NFeModelCreator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeModelCreator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    NFeModelCreator is a class designed to build multiple text-based models for product description data.</span>
+<span class="sd">    </span>
+<span class="sd">    It supports different vectorization strategies and embedding models to create:</span>
+<span class="sd">    - A string match dictionary model for exact matching of unique product descriptions per GTIN.</span>
+<span class="sd">    - A vectorizer-based 1-NN classification model with PyTorch tensors.</span>
+<span class="sd">    - A Sentence-BERT embedding model with tensor representations for semantic similarity.</span>
+<span class="sd">    </span>
+<span class="sd">    Attributes:</span>
+<span class="sd">        dataset (pd.DataFrame): Input dataset containing GTIN and original product descriptions.</span>
+<span class="sd">        trusted_records (int): Threshold for minimum record count to consider a GTIN reliable.</span>
+<span class="sd">        vectorizer (sklearn Pipeline or Vectorizer): Text vectorizer for feature extraction.</span>
+<span class="sd">        embedding (SentenceTransformer): Sentence transformer model for embedding text.</span>
+<span class="sd">    </span>
+<span class="sd">    Raises:</span>
+<span class="sd">        ValueError: If the input dataset is empty or if unsupported vectorizer or embedding is specified.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> 
+                 <span class="n">data</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span> 
+                 <span class="n">trusted_records</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> 
+                 <span class="n">vectorizer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;TFIDF_CHAR_NGRAM&#39;</span><span class="p">,</span>
+                 <span class="n">embedding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;SBERT&#39;</span><span class="p">,</span>
+
+        <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize the model creator with dataset, vectorizer, and embedding options.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            data (pd.DataFrame): Dataframe with columns &#39;gtin&#39; and &#39;original&#39;.</span>
+<span class="sd">            trusted_records (int): Minimum count of records per GTIN to be trusted.</span>
+<span class="sd">            vectorizer (str): Vectorizer key to select predefined vectorization pipeline.</span>
+<span class="sd">            embedding (str): Embedding key to select pretrained embedding model.</span>
+<span class="sd">        </span>
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If data is empty or vectorizer/embedding not supported.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Check if input dataset is empty, raise error if true</span>
+        <span class="k">if</span> <span class="n">data</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input dataset is empty. Please provide valid data.&quot;</span><span class="p">)</span>
+        
+        <span class="c1"># Store input dataset and trusted records threshold in instance variables</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">trusted_records</span> <span class="o">=</span> <span class="n">trusted_records</span>
+
+        <span class="c1"># Predefine multiple vectorizer configurations for text feature extraction</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer_configs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;BOW_WORD&#39;</span><span class="p">:</span> <span class="n">make_pipeline</span><span class="p">(</span>
+                <span class="n">CountVectorizer</span><span class="p">(</span><span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;word&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">),</span>
+                <span class="n">Normalizer</span><span class="p">(</span><span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">)</span>
+            <span class="p">),</span>
+            <span class="s1">&#39;BOW_CHAR&#39;</span><span class="p">:</span> <span class="n">make_pipeline</span><span class="p">(</span>
+                <span class="n">CountVectorizer</span><span class="p">(</span><span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;char&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">),</span>
+                <span class="n">Normalizer</span><span class="p">(</span><span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">)</span>
+            <span class="p">),</span>
+            <span class="s1">&#39;BOW_CHAR_NGRAM&#39;</span><span class="p">:</span> <span class="n">make_pipeline</span><span class="p">(</span>
+                <span class="n">CountVectorizer</span><span class="p">(</span><span class="n">ngram_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;char&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">),</span>
+                <span class="n">Normalizer</span><span class="p">(</span><span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">)</span>
+            <span class="p">),</span>
+            <span class="s1">&#39;TFIDF_WORD&#39;</span><span class="p">:</span> <span class="n">TfidfVectorizer</span><span class="p">(</span><span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;word&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;TFIDF_CHAR&#39;</span><span class="p">:</span> <span class="n">TfidfVectorizer</span><span class="p">(</span><span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;char&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">),</span>
+            <span class="s1">&#39;TFIDF_CHAR_NGRAM&#39;</span><span class="p">:</span> <span class="n">TfidfVectorizer</span><span class="p">(</span><span class="n">ngram_range</span><span class="o">=</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">5</span><span class="p">),</span> <span class="n">analyzer</span><span class="o">=</span><span class="s1">&#39;char&#39;</span><span class="p">,</span> <span class="n">max_features</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">norm</span><span class="o">=</span><span class="s1">&#39;l2&#39;</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Validate vectorizer choice, raise error if not supported</span>
+        <span class="k">if</span> <span class="n">vectorizer</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer_configs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Vectorizer &#39;</span><span class="si">{</span><span class="n">vectorizer</span><span class="si">}</span><span class="s2">&#39; not supported. Choose from: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vectorizer_configs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Assign selected vectorizer pipeline/model to instance variable</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer_configs</span><span class="p">[</span><span class="n">vectorizer</span><span class="p">]</span>
+
+        <span class="c1"># Predefine embedding configurations - only one here: Sentence-BERT all-MiniLM-L6-v2</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embedding_configs</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;SBERT&#39;</span><span class="p">:</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="s1">&#39;all-MiniLM-L6-v2&#39;</span><span class="p">)</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Validate embedding choice, raise error if not supported</span>
+        <span class="k">if</span> <span class="n">embedding</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_configs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Embedding &#39;</span><span class="si">{</span><span class="n">embedding</span><span class="si">}</span><span class="s2">&#39; not supported. Choose from: </span><span class="si">{</span><span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">embedding_configs</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Assign selected embedding model to instance variable</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embedding</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_configs</span><span class="p">[</span><span class="n">embedding</span><span class="p">]</span>
+
+        <span class="c1"># Build all models upon initialization</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_string_match_model</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_vectorizer_tensors_model</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">create_embedding_tensors_model</span><span class="p">()</span>
+
+<div class="viewcode-block" id="NFeModelCreator.create_string_match_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_string_match_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_string_match_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a dictionary-based string match model.</span>
+<span class="sd">        </span>
+<span class="sd">        This model identifies unique &#39;original&#39; product descriptions per GTIN that are</span>
+<span class="sd">        frequent enough (above trusted_records threshold) and exclusive (do not appear in other GTINs).</span>
+<span class="sd">        </span>
+<span class="sd">        The result is saved as a pickle file mapping unique descriptions to their GTIN.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating String Match model...&#39;</span><span class="p">)</span>
+        
+        <span class="c1"># Group dataset by GTIN and &#39;original&#39; description, counting occurrences</span>
+        <span class="n">data_count</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span>
+            <span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s1">&#39;gtin&#39;</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">])</span>
+            <span class="o">.</span><span class="n">size</span><span class="p">()</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;count&#39;</span><span class="p">)</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Filter to keep only descriptions with counts above the trusted_records threshold</span>
+        <span class="n">data_filtered</span> <span class="o">=</span> <span class="n">data_count</span><span class="p">[</span><span class="n">data_count</span><span class="p">[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">trusted_records</span><span class="p">]</span>
+
+        <span class="c1"># Group by GTIN, aggregating original descriptions into sets</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">data_filtered</span>
+            <span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;gtin&#39;</span><span class="p">)[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
+            <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+            <span class="c1"># For each GTIN row, filter descriptions unique to that GTIN</span>
+            <span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">string_match</span><span class="o">=</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">row</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_unique_descriptions</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">df</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+            <span class="c1"># Keep only rows where there are unique descriptions</span>
+            <span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;string_match&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="nb">bool</span><span class="p">)]</span>
+            <span class="c1"># Convert sets back to lists for easier processing</span>
+            <span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">string_match</span><span class="o">=</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;string_match&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="nb">list</span><span class="p">))</span>
+            <span class="c1"># Explode lists into separate rows</span>
+            <span class="o">.</span><span class="n">explode</span><span class="p">(</span><span class="s1">&#39;string_match&#39;</span><span class="p">)</span>
+            <span class="c1"># Convert to dictionary mapping description -&gt; GTIN</span>
+            <span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">df</span><span class="p">[</span><span class="s1">&#39;string_match&#39;</span><span class="p">],</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">])))</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Save the resulting string match model dictionary to disk</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Saving String Match model...&#39;</span><span class="p">)</span>
+        <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_string_match.pkl&#39;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String Match model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeModelCreator.create_vectorizer_tensors_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_vectorizer_tensors_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_vectorizer_tensors_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create a vectorizer-based model for 1-NN classification.</span>
+<span class="sd">        </span>
+<span class="sd">        Steps:</span>
+<span class="sd">        - Filter dataset to remove null descriptions.</span>
+<span class="sd">        - Group by GTIN, selecting most frequent original description.</span>
+<span class="sd">        - Train selected vectorizer on these descriptions.</span>
+<span class="sd">        - Save vectorizer model.</span>
+<span class="sd">        - Convert feature vectors to PyTorch tensors.</span>
+<span class="sd">        - Store tensor vectors with GTIN and original descriptions in a DataFrame.</span>
+<span class="sd">        - Save DataFrame as a pickle file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="c1"># Filter out rows with null in &#39;original&#39; column</span>
+        <span class="n">df_grouped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notnull</span><span class="p">()]</span>
+
+        <span class="c1"># Group by GTIN and select the most frequent &#39;original&#39; description per GTIN</span>
+        <span class="n">df_grouped</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">df_grouped</span>
+            <span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;gtin&#39;</span><span class="p">)[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
+            <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">value_counts</span><span class="p">()</span><span class="o">.</span><span class="n">idxmax</span><span class="p">())</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Train vectorizer pipeline/model on the selected original descriptions</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating vectorizer model...&#39;</span><span class="p">)</span>
+        <span class="n">model_knn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">])</span>
+
+        <span class="c1"># Save the vectorizer pipeline/model to disk for future use</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Saving vectorizer model...&#39;</span><span class="p">)</span>
+        <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_vectorizer.pkl&#39;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">vectorizer</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Vectorizer model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Convert sparse matrix to dense numpy array</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating tensor model for 1-NN classification...&#39;</span><span class="p">)</span>
+        <span class="n">array_vectors</span> <span class="o">=</span> <span class="n">model_knn</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span>
+
+        <span class="c1"># Convert each numpy vector to a PyTorch tensor of float32 dtype</span>
+        <span class="n">tensor_vectors</span> <span class="o">=</span> <span class="p">[</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">vec</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span> <span class="k">for</span> <span class="n">vec</span> <span class="ow">in</span> <span class="n">array_vectors</span><span class="p">]</span>
+
+        <span class="c1"># Create DataFrame holding tensor vectors, original descriptions, and GTINs</span>
+        <span class="n">df_vectors</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;vector&#39;</span><span class="p">:</span> <span class="n">tensor_vectors</span><span class="p">,</span>
+            <span class="s1">&#39;original&#39;</span><span class="p">:</span> <span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;gtin&#39;</span><span class="p">:</span> <span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+        <span class="p">})</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Save this DataFrame of tensors for 1-NN classification</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Saving tensor model for 1-NN classification...&#39;</span><span class="p">)</span>
+        <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_1_NN.pkl&#39;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">df_vectors</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Tensor model for 1-NN classification saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeModelCreator.create_embedding_tensors_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_embedding_tensors_model">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_embedding_tensors_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Create an embedding-based tensor model using Sentence-BERT.</span>
+<span class="sd">        </span>
+<span class="sd">        Steps:</span>
+<span class="sd">        - Filter dataset to remove null descriptions.</span>
+<span class="sd">        - Group by GTIN, selecting most frequent original description.</span>
+<span class="sd">        - Encode descriptions into embeddings (tensor).</span>
+<span class="sd">        - Store tensor embeddings with GTIN and original descriptions in a DataFrame.</span>
+<span class="sd">        - Save DataFrame as a pickle file.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        
+        <span class="c1"># Filter dataset for non-null original descriptions</span>
+        <span class="n">df_grouped</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">dataset</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notnull</span><span class="p">()]</span>
+
+        <span class="c1"># Group by GTIN and select the most frequent original description per GTIN</span>
+        <span class="n">df_grouped</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">df_grouped</span>
+            <span class="o">.</span><span class="n">groupby</span><span class="p">(</span><span class="s1">&#39;gtin&#39;</span><span class="p">)[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
+            <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="o">.</span><span class="n">value_counts</span><span class="p">()</span><span class="o">.</span><span class="n">idxmax</span><span class="p">())</span>
+            <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Print status</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating embedding model...&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Encode descriptions as tensor embeddings using the selected embedding model</span>
+        <span class="n">embedded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span>
+            <span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span> 
+            <span class="n">convert_to_tensor</span><span class="o">=</span><span class="kc">True</span>
+        <span class="p">)</span>
+        
+        <span class="c1"># Create DataFrame holding embedding tensors, original descriptions, and GTINs</span>
+        <span class="n">df_vectors</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span>
+            <span class="s1">&#39;vector&#39;</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">embedded</span><span class="o">.</span><span class="n">cpu</span><span class="p">()),</span>
+            <span class="s1">&#39;original&#39;</span><span class="p">:</span> <span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;gtin&#39;</span><span class="p">:</span> <span class="n">df_grouped</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">values</span>
+        <span class="p">})</span><span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">drop</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Save the embedding DataFrame to disk</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Saving embedding tensor model...&#39;</span><span class="p">)</span>
+        <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_embedding.pkl&#39;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">df_vectors</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding tensor model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeModelCreator.get_unique_descriptions">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.get_unique_descriptions">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_unique_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">all_data</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function to identify unique &#39;original&#39; descriptions for a given GTIN.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            row (pd.Series): Row containing &#39;gtin&#39; and set of &#39;original&#39; descriptions.</span>
+<span class="sd">            all_data (pd.DataFrame): DataFrame with all grouped data.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            set: Set of descriptions unique to the GTIN in the given row.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Extract current GTIN and its set of descriptions</span>
+        <span class="n">current_gtin</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span>
+        <span class="n">current_set</span> <span class="o">=</span> <span class="n">row</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Collect sets of descriptions from other GTINs (excluding current)</span>
+        <span class="n">other_sets</span> <span class="o">=</span> <span class="n">all_data</span><span class="p">[</span><span class="n">all_data</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">current_gtin</span><span class="p">][</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
+
+        <span class="c1"># Union all descriptions from other GTINs</span>
+        <span class="n">combined_others</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">other_sets</span><span class="p">)</span>
+
+        <span class="c1"># Return only descriptions unique to current GTIN (difference set)</span>
+        <span class="k">return</span> <span class="n">current_set</span> <span class="o">-</span> <span class="n">combined_others</span></div>
+
+
+<div class="viewcode-block" id="NFeModelCreator.create_file_path">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_file_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_file_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;models&#39;</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;filename.pickle&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Helper function to create directory and file path for saving models.</span>
+<span class="sd">        </span>
+<span class="sd">        Args:</span>
+<span class="sd">            dir (str): Directory where model files are stored.</span>
+<span class="sd">            filename (str): Name of the file to save.</span>
+<span class="sd">        </span>
+<span class="sd">        Returns:</span>
+<span class="sd">            str: Full file path to save the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Create directory if it doesn&#39;t exist</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="c1"># Construct and return full path string</span>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerGTINEstimator</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A class to estimate GTIN codes from product descriptions using </span>
+<span class="sd">    multiple matching models (string matching, n-gram vectorization, and sentence embeddings).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> 
+                 <span class="n">batch</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> 
+                 <span class="n">model</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;all-MiniLM-L6-v2&quot;</span><span class="p">,</span>
+                 <span class="n">n_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
+                 <span class="n">force_cpu</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+                 <span class="n">min_ngram_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span>
+                 <span class="n">min_embedding_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.4</span>
+        <span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the estimator, loads models, and performs classification.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            batch (pd.DataFrame): Input DataFrame with at least &#39;original&#39; and &#39;gtin&#39; columns.</span>
+<span class="sd">            model (str): SentenceTransformer model to be used for embeddings.</span>
+<span class="sd">            n_threads (int): Number of threads used for processing data (GPU disable).</span>
+<span class="sd">            force_cpu (bool): If True, forces computation on CPU (ignoring GPU availability).</span>
+<span class="sd">            min_ngram_confidence (float): Minimum confidence score required for an n-gram to be considered valid.</span>
+<span class="sd">            min_embedding_confidence (float): Minimum confidence score required for an embedding to be considered valid.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">batch</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Input DataFrame is required to perform estimation.&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Store input as working DataFrame</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Store confidences.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ngram_confidence</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">min_ngram_confidence</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embedding_confidence</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">min_embedding_confidence</span>
+
+        <span class="c1"># Create default columns for results</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;similarity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="c1"># Set number of threads based on available CPU cores</span>
+        <span class="n">n_cores</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_cores</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="n">n_cores</span> <span class="o">-</span> <span class="n">n_threads</span> 
+            <span class="k">if</span> <span class="n">n_threads</span> <span class="o">!=</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">n_cores</span> <span class="o">-</span> <span class="n">n_threads</span> <span class="o">&gt;</span> <span class="mi">0</span>
+            <span class="k">else</span> <span class="n">n_cores</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="p">)</span>
+
+        <span class="n">torch</span><span class="o">.</span><span class="n">set_num_threads</span><span class="p">(</span>
+            <span class="n">n_cores</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_cores</span> <span class="o">&lt;=</span> <span class="mi">0</span> 
+            <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">num_cores</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Set device to GPU if available, otherwise CPU</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span>
+            <span class="s1">&#39;cuda&#39;</span> 
+            <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">()</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">force_cpu</span> 
+            <span class="k">else</span> <span class="s1">&#39;cpu&#39;</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Load SentenceTransformer model for embeddings</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="n">basedir</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+
+        <span class="c1"># Load string-matching dictionary model</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s2">&quot;models&quot;</span><span class="p">,</span> <span class="s2">&quot;model_string_match.pkl&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">string_matching_ref</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error loading string-matching model: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Load n-gram vectorizer</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s2">&quot;models&quot;</span><span class="p">,</span> <span class="s2">&quot;model_vectorizer.pkl&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error loading vectorizer model: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Load n-gram vector reference data</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s2">&quot;models&quot;</span><span class="p">,</span> <span class="s2">&quot;model_1_NN.pkl&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ngram_tensor_ref</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error loading n-gram model: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Load embedding vector reference data</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">basedir</span><span class="p">,</span> <span class="s2">&quot;models&quot;</span><span class="p">,</span> <span class="s2">&quot;model_embedding.pkl&quot;</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">embedding_tensor_ref</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">FileNotFoundError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error loading embedding model: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Run classification in three stages</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">string_matching_classifier</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ngram_classifier</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">embedding_classifier</span><span class="p">()</span>
+
+        <span class="c1"># Ensure unclassified records are properly marked</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isnull</span><span class="p">(),</span> <span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isnull</span><span class="p">(),</span> <span class="s1">&#39;similarity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator.string_matching_classifier">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator.string_matching_classifier">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">string_matching_classifier</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classifies using direct string-matching dictionary.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Apply dictionary mapping from &#39;original&#39; to &#39;gtin&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">map</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">string_matching_ref</span><span class="p">)</span>
+
+        <span class="c1"># Identify classified rows</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notnull</span><span class="p">()</span>
+
+        <span class="c1"># Fill additional result columns</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;similarity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;string_match&#39;</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String-Matching: finished&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator.ngram_classifier">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator.ngram_classifier">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ngram_classifier</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classifies using n-gram vectorization and 1-NN with Euclidean distance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Select unclassified rows</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Extract raw text to classify</span>
+        <span class="n">texts_to_classify</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+        <span class="c1"># Vectorize text using pre-trained vectorizer</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">vectors</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">(</span><span class="n">texts_to_classify</span><span class="p">)</span>
+            <span class="n">vectors_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">vectors</span><span class="o">.</span><span class="n">toarray</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error vectorizing texts for n-gram classification: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Prepare reference vectors</span>
+        <span class="n">ref_vectors</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ngram_tensor_ref</span><span class="p">[</span><span class="s1">&#39;vector&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="c1"># Compute distances between input and reference vectors</span>
+        <span class="n">dists</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cdist</span><span class="p">(</span><span class="n">vectors_tensor</span><span class="p">,</span> <span class="n">ref_vectors</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">min_dists</span><span class="p">,</span> <span class="n">min_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dists</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">matched_mask</span> <span class="o">=</span> <span class="n">min_dists</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_confidence</span>
+
+        <span class="c1"># Get indices of confident matches</span>
+        <span class="n">idxs_classified</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">match</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matched_mask</span><span class="p">)</span> <span class="k">if</span> <span class="n">match</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">idxs_classified</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Map local indices to DataFrame indices</span>
+        <span class="n">global_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs_classified</span><span class="p">:</span>
+            <span class="n">global_idx</span> <span class="o">=</span> <span class="n">global_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">ref_idx</span> <span class="o">=</span> <span class="n">min_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;similarity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">min_dists</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;n_gram_match&#39;</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;NGRAM-Match: finished&#39;</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator.embedding_classifier">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator.embedding_classifier">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embedding_classifier</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Classifies using sentence embeddings and 1-NN with Euclidean distance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Select unclassified rows</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isna</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">mask</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Extract raw text to classify</span>
+        <span class="n">texts_to_classify</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Encode input texts into embeddings</span>
+            <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+                <span class="n">embeddings_tensor</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">texts_to_classify</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">embeddings_tensor</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">Tensor</span><span class="p">):</span>
+                    <span class="n">embeddings_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">embeddings_tensor</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Error generating sentence embeddings: </span><span class="si">{</span><span class="n">e</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Prepare reference embeddings</span>
+        <span class="n">ref_vectors</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">embedding_tensor_ref</span><span class="p">[</span><span class="s1">&#39;vector&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">())</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+
+        <span class="c1"># Compute distances</span>
+        <span class="n">dists</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cdist</span><span class="p">(</span><span class="n">embeddings_tensor</span><span class="p">,</span> <span class="n">ref_vectors</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
+        <span class="n">min_dists</span><span class="p">,</span> <span class="n">min_indices</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dists</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">matched_mask</span> <span class="o">=</span> <span class="n">min_dists</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_confidence</span>
+        <span class="n">idxs_classified</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">matched</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">matched_mask</span><span class="p">)</span> <span class="k">if</span> <span class="n">matched</span><span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">idxs_classified</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="c1"># Map local to global DataFrame indices</span>
+        <span class="n">global_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span><span class="o">.</span><span class="n">index</span><span class="o">.</span><span class="n">to_list</span><span class="p">()</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">idxs_classified</span><span class="p">:</span>
+            <span class="n">global_idx</span> <span class="o">=</span> <span class="n">global_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">ref_idx</span> <span class="o">=</span> <span class="n">min_indices</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;similarity&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">min_dists</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;embedding_match&#39;</span>
+
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding-Match: finished&#39;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator.accuracy_measure">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator.accuracy_measure">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">accuracy_measure</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mask</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Measures and prints accuracy for a subset of classified rows.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            mask (Union[list, pd.Series]): Boolean mask or list of row indices.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">accuracy</span> <span class="o">=</span> <span class="n">accuracy_score</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">])</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Accuracy: </span><span class="si">{</span><span class="n">accuracy</span><span class="si">:</span><span class="s2">.4f</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="NFeMinerGTINEstimator.report">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerGTINEstimator.report">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">report</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generates a report of the DataFrame results, including GTIN coverage and a summary of unique combinations.</span>
+
+<span class="sd">        This method checks if the results DataFrame is empty or None. If not, it prints:</span>
+<span class="sd">          - Total number of rows in the dataset</span>
+<span class="sd">          - Total number of rows with non-null GTIN</span>
+<span class="sd">          - Percentage of rows with GTIN</span>
+<span class="sd">        Then, it returns a DataFrame summarizing unique combinations of</span>
+<span class="sd">        &#39;original&#39;, &#39;description_ref&#39;, &#39;gtin&#39;, &#39;similarity&#39;, and &#39;method&#39;,</span>
+<span class="sd">        including their counts, sorted by similarity.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            pd.DataFrame: A DataFrame containing unique combinations of </span>
+<span class="sd">                          &#39;original&#39;, &#39;description_ref&#39;, &#39;gtin&#39;, &#39;similarity&#39;, and &#39;method&#39;,</span>
+<span class="sd">                          with a &#39;count&#39; column and sorted by &#39;similarity&#39;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;The DataFrame is None or empty&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Dataset report:&quot;</span><span class="p">)</span>
+
+            <span class="c1"># Total rows with non-null GTIN</span>
+            <span class="n">total_with_gtin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">notna</span><span class="p">()</span><span class="o">.</span><span class="n">sum</span><span class="p">()</span>
+
+            <span class="c1"># Total rows in the DataFrame</span>
+            <span class="n">total_rows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">)</span>
+
+            <span class="c1"># Percentage of rows with GTIN</span>
+            <span class="n">percentage</span> <span class="o">=</span> <span class="p">(</span><span class="n">total_with_gtin</span> <span class="o">/</span> <span class="n">total_rows</span><span class="p">)</span> <span class="o">*</span> <span class="mi">100</span>
+
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total de registros no dataset: </span><span class="si">{</span><span class="n">total_rows</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Total de registros classificados: </span><span class="si">{</span><span class="n">total_with_gtin</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Porcentagem de classificação: </span><span class="si">{</span><span class="n">percentage</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">%&quot;</span><span class="p">)</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Report:&quot;</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[[</span><span class="s1">&#39;original&#39;</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">,</span> <span class="s1">&#39;similarity&#39;</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]]</span>
+                <span class="o">.</span><span class="n">value_counts</span><span class="p">()</span>                          <span class="c1"># count unique combinations</span>
+                <span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;count&#39;</span><span class="p">)</span>               <span class="c1"># convert to DataFrame and name count column</span>
+                <span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="n">columns</span><span class="o">=</span><span class="p">{</span><span class="mi">0</span><span class="p">:</span> <span class="s1">&#39;count&#39;</span><span class="p">})</span>            <span class="c1"># ensure count column name (depending on pandas version)</span>
+                <span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s1">&#39;similarity&#39;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>  <span class="c1"># sort by similarity</span>
+            <span class="p">)</span></div>
+</div>
+
+    
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="c1"># Path to feather dataset file</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># Load feather dataset into pandas DataFrame</span>
+    <span class="n">nfe</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_feather</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+
+    <span class="c1"># Create empty DataFrame for simplified data extraction</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+
+    <span class="c1"># Extract GTIN from nested JSON in &#39;json&#39; column</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nfe</span><span class="p">[</span><span class="s1">&#39;json&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">)[</span><span class="s1">&#39;produto&#39;</span><span class="p">][</span><span class="s1">&#39;gtin&#39;</span><span class="p">])</span>
+
+    <span class="c1"># Extract &#39;original&#39; product description from nested JSON</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nfe</span><span class="p">[</span><span class="s1">&#39;json&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">)[</span><span class="s1">&#39;produto&#39;</span><span class="p">][</span><span class="s1">&#39;descricao&#39;</span><span class="p">][</span><span class="s1">&#39;original&#39;</span><span class="p">])</span>
+
+    <span class="c1"># Display first two rows to verify extraction</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="c1"># Instantiate the model creator with extracted data</span>
+    <span class="n">model_creator</span> <span class="o">=</span> <span class="n">NFeModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">df</span><span class="p">)</span>
+
+    <span class="c1"># Configure pandas display options for easier reading</span>
+    <span class="n">pd</span><span class="o">.</span><span class="n">set_option</span><span class="p">(</span><span class="s1">&#39;display.max_columns&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;#&#39;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;TESTING MODELS&#39;</span><span class="p">)</span>
+    
+    <span class="c1"># Test loading string match model</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s1">&#39;models/model_string_match.pkl&#39;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="p">)</span>
+
+    <span class="c1"># Test loading 1-NN tensor model and print first 10 rows</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s1">&#39;models/model_1_NN.pkl&#39;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>    
+
+    <span class="c1"># Test loading saved vectorizer model and check transformation consistency</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s1">&#39;models/model_vectorizer.pkl&#39;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">vec1</span> <span class="o">=</span> <span class="n">test</span><span class="o">.</span><span class="n">transform</span><span class="p">([</span><span class="s1">&#39;HAMBURGUER DE TESTE&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span>
+    <span class="n">vec2</span> <span class="o">=</span> <span class="n">model_creator</span><span class="o">.</span><span class="n">vectorizer</span><span class="o">.</span><span class="n">transform</span><span class="p">([</span><span class="s1">&#39;HAMBURGUER DE TESTE&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;TRUE&#39;</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">vec1</span><span class="p">,</span> <span class="n">vec2</span><span class="p">)</span> <span class="k">else</span> <span class="s1">&#39;FALSE&#39;</span><span class="p">)</span>
+
+    <span class="c1"># Test loading embedding tensor model and print first 10 rows</span>
+    <span class="n">path</span> <span class="o">=</span> <span class="s1">&#39;models/model_embedding.pkl&#39;</span>
+    <span class="n">test</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">read_pickle</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">test</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>
+
+    <span class="c1"># Build DataFrame from parsed fields</span>
+    <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">()</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;label&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nfe</span><span class="p">[</span><span class="s1">&#39;json&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">)[</span><span class="s1">&#39;produto&#39;</span><span class="p">][</span><span class="s1">&#39;gtin&#39;</span><span class="p">])</span>
+    <span class="n">df</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nfe</span><span class="p">[</span><span class="s1">&#39;json&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">item</span><span class="p">)[</span><span class="s1">&#39;produto&#39;</span><span class="p">][</span><span class="s1">&#39;descricao&#39;</span><span class="p">][</span><span class="s1">&#39;original&#39;</span><span class="p">])</span>
+
+    <span class="c1"># Instantiate estimator</span>
+    <span class="n">estimator</span> <span class="o">=</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">(</span><span class="n">batch</span><span class="o">=</span><span class="n">df</span><span class="p">)</span>
+
+    <span class="c1"># Print sample and diagnostics</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">accuracy_score</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">],</span> <span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">fillna</span><span class="p">(</span><span class="s1">&#39;Sem Valor&#39;</span><span class="p">)))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">isnull</span><span class="p">()])</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">head</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">string_matching_ref</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">vectorizer</span><span class="o">.</span><span class="n">get_params</span><span class="p">())</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">ngram_tensor_ref</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">estimator</span><span class="o">.</span><span class="n">embedding_tensor_ref</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, ..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

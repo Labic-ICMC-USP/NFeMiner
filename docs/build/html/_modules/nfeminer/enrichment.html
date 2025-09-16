@@ -1,0 +1,711 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nfeminer.enrichment &mdash; NFeMiner 1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../_static/documentation_options.js?v=f2a433a1"></script>
+      <script src="../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../genindex.html" />
+    <link rel="search" title="Search" href="../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../index.html" class="icon icon-home">
+            NFeMiner
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../intro.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../pipeline.html">Processing Flow</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../modules.html">nfeminer</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../index.html">NFeMiner</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../index.html">Module code</a></li>
+          <li class="breadcrumb-item"><a href="../nfeminer.html">nfeminer</a></li>
+      <li class="breadcrumb-item active">nfeminer.enrichment</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for nfeminer.enrichment</h1><div class="highlight"><pre>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">abc</span><span class="w"> </span><span class="kn">import</span> <span class="n">ABC</span><span class="p">,</span> <span class="n">abstractmethod</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span><span class="p">,</span> <span class="n">model_validator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">List</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Quantity</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Represents a value with an associated unit (e.g., volume, quantity).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        valor (float | None): Numerical value.</span>
+<span class="sd">        unidade (str | None): Unit of measurement (e.g., &#39;kg&#39;, &#39;mL&#39;).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">unidade</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Dimensional</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Represents dimensional attributes of a product (e.g., size).</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        valor (str | None): Dimensional value as a string.</span>
+<span class="sd">        unidade (str | None): Measurement unit (e.g., &#39;cm&#39;, &#39;m&#39;).</span>
+
+<span class="sd">    Validators:</span>
+<span class="sd">        input_normalize: Ensures the &#39;valor&#39; is converted to a string if it&#39;s a number.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">unidade</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="nd">@model_validator</span><span class="p">(</span><span class="n">mode</span><span class="o">=</span><span class="s1">&#39;before&#39;</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">input_normalize</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Converts numeric &#39;valor&#39; into string form before validation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            data (dict): Input data.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Normalized data.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+            <span class="n">value</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;valor&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">data</span><span class="p">[</span><span class="s1">&#39;valor&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">data</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Weight</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Represents the weight of a product.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        valor (float | None): Weight value.</span>
+<span class="sd">        unidade (str | None): Weight unit (e.g., &#39;kg&#39;).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">unidade</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Characteristics</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Contains physical characteristics of the product.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        dimensoes (_Dimensional): Dimensions.</span>
+<span class="sd">        peso (_Weight): Weight.</span>
+<span class="sd">        volume_por_unidade (_Quantity): Volume per unit.</span>
+
+<span class="sd">    Validators:</span>
+<span class="sd">        ensure_*: Ensures nested objects are initialized if None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">dimensoes</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Dimensional</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Dimensional</span><span class="p">)</span>
+    <span class="n">peso</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Weight</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Weight</span><span class="p">)</span>
+    <span class="n">volume_por_unidade</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Quantity</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Quantity</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Packaging</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Packaging information of the product.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        tipo (str | None): Type of packaging (e.g., box, bag).</span>
+<span class="sd">        quantidade (_Quantity): Quantity of packages.</span>
+
+<span class="sd">    Validators:</span>
+<span class="sd">        ensure_Quantity: Initializes quantity if None.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">tipo</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">quantidade</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Quantity</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Quantity</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_StructuredDetailsExtracted</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Structured details extracted from product description.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        embalagem (_Packaging): Packaging information.</span>
+<span class="sd">        caracteristicas (_Characteristics): Physical characteristics.</span>
+
+<span class="sd">    Validators:</span>
+<span class="sd">        ensure_structure: Initializes missing substructures.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">embalagem</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Packaging</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Packaging</span><span class="p">)</span>
+    <span class="n">caracteristicas</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_Characteristics</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Characteristics</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_AdditionalMetadata</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Additional metadata about the product.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        marca (str | None): Product brand.</span>
+<span class="sd">        origem (str | None): Product origin (e.g., &#39;nacional&#39;).</span>
+<span class="sd">        categoria (List[str]): Hierarchical category path.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">marca</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">origem</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">categoria</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_EnrichedDescription</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Enriched product description inferred from text.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        produto_base (str | None): Base product name.</span>
+<span class="sd">        produto_detalhado (str | None): Detailed inferred description.</span>
+<span class="sd">        detalhes_extraidos (_StructuredDetailsExtracted): Structured attributes.</span>
+<span class="sd">        informacoes_adicionais (_AdditionalMetadata): Additional metadata.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">produto_base</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">produto_detalhado</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">detalhes_extraidos</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_StructuredDetailsExtracted</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_StructuredDetailsExtracted</span><span class="p">)</span>
+    <span class="n">informacoes_adicionais</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_AdditionalMetadata</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_AdditionalMetadata</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Description</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Original and enriched product description.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        original (str): Raw text from the invoice.</span>
+<span class="sd">        enriquecida (_EnrichedDescription): Enriched structured description.</span>
+<span class="sd">        tags (List[str]): Semantic tags extracted or inferred.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">original</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">enriquecida</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">_EnrichedDescription</span><span class="p">]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_EnrichedDescription</span><span class="p">)</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_UnitPrice</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Unit price of the product.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        valor (float | None): Monetary value.</span>
+<span class="sd">        moeda (str | None): Currency (default: &#39;BRL&#39;).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">valor</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">moeda</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;BRL&quot;</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_Product</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Main product schema, as expected in the JSON output.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        id_item (int): Item identifier.</span>
+<span class="sd">        id_nfe (str | None): Invoice ID.</span>
+<span class="sd">        ncm (str | None): NCM classification code.</span>
+<span class="sd">        gtin (str | None): GTIN barcode.</span>
+<span class="sd">        descricao (_Description): Product description.</span>
+<span class="sd">        unidade_comercializacao (str | None): Commercial unit.</span>
+<span class="sd">        quantidade_comercializada (_Quantity): Quantity sold.</span>
+<span class="sd">        valor_unitario (_UnitPrice): Unit price.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">id_item</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">id_nfe</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">ncm</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">gtin</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">descricao</span><span class="p">:</span> <span class="n">_Description</span>
+    <span class="n">unidade_comercializacao</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">quantidade_comercializada</span><span class="p">:</span> <span class="n">_Quantity</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="n">_Quantity</span><span class="p">)</span>
+    <span class="n">valor_unitario</span><span class="p">:</span> <span class="n">_UnitPrice</span>
+
+<div class="viewcode-block" id="NFeMinerJSONValidator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerJSONValidator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerJSONValidator</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Top-level Pydantic schema used for validating enriched output.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        produto (_Product): Full product structure.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">produto</span><span class="p">:</span> <span class="n">_Product</span></div>
+
+
+<div class="viewcode-block" id="NFeMinerBaseGenerateModel">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerBaseGenerateModel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerBaseGenerateModel</span><span class="p">(</span><span class="n">ABC</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Abstract base class for models designed to extract structured data from electronic invoice (NFe) descriptions.</span>
+
+<span class="sd">    This class defines the expected prompt structure, output format, and a standard method interface for generating</span>
+<span class="sd">    enriched product data in JSON format. Subclasses must implement the `generate` method.</span>
+
+<span class="sd">    Class Attributes:</span>
+<span class="sd">        instruction (str): Instructions given to the model describing the expected behavior and output structure.</span>
+<span class="sd">        prompt_template (str): Template for composing the full prompt to be sent to the model.</span>
+<span class="sd">        input_template (str): Template for formatting invoice and item fields into a prompt for the model.</span>
+<span class="sd">        example (str): An example of a valid model response for reference.</span>
+
+<span class="sd">    Methods:</span>
+<span class="sd">        generate(text: str) -&gt; str:</span>
+<span class="sd">            Abstract method. Should generate a raw response given a prompt.</span>
+<span class="sd">        </span>
+<span class="sd">        json_generate(invoice_id, item_id, ncm_code, gtin_code, sales_unit, quantity_sold, unit_price, description) -&gt; dict:</span>
+<span class="sd">            Generates enriched JSON data from basic product and invoice fields.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">instruction</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;Você é um modelo de linguagem treinado para processar dados de notas fiscais eletrônicas (NFEs) em português. Sua tarefa é analisar a descrição do item e outros campos fornecidos, extrair informações estruturadas e retornar um JSON formatado conforme uma estrutura predefinida.</span>
+
+<span class="s2">**Regras importantes:**</span>
+<span class="s2">1. As notas fiscais estão em português.</span>
+<span class="s2">2. O JSON de saída deve ser formatado conforme a estrutura detalhada abaixo.</span>
+<span class="s2">3. Certifique-se de separar números de suas unidades para campos como quantidade, peso, volume, etc.</span>
+<span class="s2">4. Utilize informações presentes na descrição para preencher campos específicos no JSON, enriquecendo os dados sempre que possível.</span>
+<span class="s2">5. Se um campo não puder ser inferido, deixe-o vazio ou use `null`.</span>
+
+<span class="s2">---</span>
+
+<span class="s2">**Estrutura esperada do JSON de saída:**</span>
+
+<span class="s2">```json</span>
+<span class="s2">{</span>
+<span class="s2">  &quot;produto&quot;: {</span>
+<span class="s2">    &quot;id_item&quot;: &quot;&lt;ID único do item&gt;&quot;,</span>
+<span class="s2">    &quot;id_nfe&quot;: &quot;&lt;ID único da nota fiscal&gt;&quot;,</span>
+<span class="s2">    &quot;ncm&quot;: &quot;&lt;Código NCM&gt;&quot;,</span>
+<span class="s2">    &quot;gtin&quot;: &quot;&lt;Código GTIN&gt;&quot;,</span>
+<span class="s2">    &quot;descricao&quot;: {</span>
+<span class="s2">      &quot;original&quot;: &quot;&lt;Descrição original extraída da nota fiscal&gt;&quot;,</span>
+<span class="s2">      &quot;enriquecida&quot;: {</span>
+<span class="s2">        &quot;produto_base&quot;: &quot;&lt;Nome base do produto&gt;&quot;,</span>
+<span class="s2">        &quot;produto_detalhado&quot;: &quot;&lt;Descrição detalhada inferida do produto&gt;&quot;,</span>
+<span class="s2">        &quot;detalhes_extraidos&quot;: {</span>
+<span class="s2">          &quot;embalagem&quot;: {</span>
+<span class="s2">            &quot;tipo&quot;: &quot;&lt;Tipo de embalagem (ex.: caixa, saco, garrafa)&gt;&quot;,</span>
+<span class="s2">            &quot;quantidade&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: &quot;&lt;Número&gt;&quot;,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;&lt;Unidade (ex.: unidades, litros, kg)&gt;&quot;</span>
+<span class="s2">            }</span>
+<span class="s2">          },</span>
+<span class="s2">          &quot;caracteristicas&quot;: {</span>
+<span class="s2">            &quot;dimensoes&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: &quot;&lt;Número&gt;&quot;,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;&lt;Unidade (ex.: cm, m, litros)&gt;&quot;</span>
+<span class="s2">            },</span>
+<span class="s2">            &quot;peso&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: &quot;&lt;Número&gt;&quot;,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;&lt;Unidade (ex.: gramas, kg)&gt;&quot;</span>
+<span class="s2">            },</span>
+<span class="s2">            &quot;volume_por_unidade&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: &quot;&lt;Número&gt;&quot;,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;&lt;Unidade (ex.: mL, litros)&gt;&quot;</span>
+<span class="s2">            }</span>
+<span class="s2">          }</span>
+<span class="s2">        },</span>
+<span class="s2">        &quot;informacoes_adicionais&quot;: {</span>
+<span class="s2">          &quot;marca&quot;: &quot;&lt;Marca do produto, se disponível&gt;&quot;,</span>
+<span class="s2">          &quot;origem&quot;: &quot;&lt;Origem (ex.: nacional, importado)&gt;&quot;,</span>
+<span class="s2">          &quot;categoria&quot;: [&quot;Categoria hierarquica do produto - categoria genérica&quot;, &quot;categoria intermediaria&quot;, &quot;categoria especifica&quot;]</span>
+<span class="s2">        }</span>
+<span class="s2">      },</span>
+<span class="s2">      &quot;tags&quot;: [</span>
+<span class="s2">        &quot;tag semantica 1&quot;,</span>
+<span class="s2">        &quot;tag semantica 2&quot;,</span>
+<span class="s2">        &quot;tag semantica 3&quot;,</span>
+<span class="s2">        &quot;tag semantica 4&quot;,</span>
+<span class="s2">        &quot;tag semantica 5&quot;</span>
+<span class="s2">      ]</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;unidade_comercializacao&quot;: &quot;&lt;Unidade de comercialização&gt;&quot;,</span>
+<span class="s2">    &quot;quantidade_comercializada&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: &quot;&lt;Número&gt;&quot;,</span>
+<span class="s2">      &quot;unidade&quot;: &quot;&lt;Unidade&gt;&quot;</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;quantidade_convertida&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: &quot;&lt;Número convertido&gt;&quot;,</span>
+<span class="s2">      &quot;unidade&quot;: &quot;&lt;Unidade convertida&gt;&quot;</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;valor_unitario&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: &quot;&lt;Valor unitário&gt;&quot;,</span>
+<span class="s2">      &quot;moeda&quot;: &quot;&lt;Código da moeda (ex.: BRL, USD)&gt;&quot;</span>
+<span class="s2">    }</span>
+<span class="s2">  }</span>
+<span class="s2">}</span>
+<span class="s2">```</span>
+<span class="s2">&quot;&quot;&quot;</span>
+
+    <span class="n">prompt_template</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="si">{}</span><span class="se">\n</span><span class="si">{}</span><span class="s2">&quot;</span>
+
+    <span class="n">input_template</span> <span class="o">=</span> <span class="s2">&quot;ID NFe: </span><span class="si">{invoice_id}</span><span class="se">\n</span><span class="s2">ID Item: </span><span class="si">{item_id}</span><span class="se">\n</span><span class="s2">Nomenclatura Comum do Mercosul (NCM): </span><span class="si">{ncm_code}</span><span class="se">\n</span><span class="s2">Global Trade Item Number (GTIN): </span><span class="si">{gtin_code}</span><span class="se">\n</span><span class="s2">Unidade de Comercialização: </span><span class="si">{sales_unit}</span><span class="se">\n</span><span class="s2">Quantidade Comercializada: </span><span class="si">{quantity_sold}</span><span class="se">\n</span><span class="s2">Valor Unitário: </span><span class="si">{unit_price}</span><span class="se">\n</span><span class="s2">Descrição: </span><span class="si">{description}</span><span class="s2">&quot;</span>
+    
+    <span class="n">example</span> <span class="o">=</span> <span class="s2">&quot;&quot;&quot;**Exemplo de saída:**</span>
+
+<span class="s2">```json</span>
+<span class="s2">{</span>
+<span class="s2">  &quot;produto&quot;: {</span>
+<span class="s2">    &quot;id_item&quot;: &quot;1&quot;,</span>
+<span class="s2">    &quot;id_nfe&quot;: &quot;1234567890&quot;,</span>
+<span class="s2">    &quot;ncm&quot;: &quot;01012100&quot;,</span>
+<span class="s2">    &quot;gtin&quot;: &quot;7891234567890&quot;,</span>
+<span class="s2">    &quot;descricao&quot;: {</span>
+<span class="s2">      &quot;original&quot;: &quot;CAIXA C/ 12 GARRAFAS AGUA 500ML&quot;,</span>
+<span class="s2">      &quot;enriquecida&quot;: {</span>
+<span class="s2">        &quot;produto_base&quot;: &quot;Água Mineral&quot;,</span>
+<span class="s2">        &quot;produto_detalhado&quot;: &quot;Uma caixa com 12 garrafas de 500 ml de água mineral&quot;,</span>
+<span class="s2">        &quot;detalhes_extraidos&quot;: {</span>
+<span class="s2">          &quot;embalagem&quot;: {</span>
+<span class="s2">            &quot;tipo&quot;: &quot;Caixa&quot;,</span>
+<span class="s2">            &quot;quantidade&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: 12,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;unidades&quot;</span>
+<span class="s2">            }</span>
+<span class="s2">          },</span>
+<span class="s2">          &quot;caracteristicas&quot;: {</span>
+<span class="s2">            &quot;dimensoes&quot;: null,</span>
+<span class="s2">            &quot;peso&quot;: null,</span>
+<span class="s2">            &quot;volume_por_unidade&quot;: {</span>
+<span class="s2">              &quot;valor&quot;: 500,</span>
+<span class="s2">              &quot;unidade&quot;: &quot;mL&quot;</span>
+<span class="s2">            }</span>
+<span class="s2">          }</span>
+<span class="s2">        },</span>
+<span class="s2">        &quot;informacoes_adicionais&quot;: {</span>
+<span class="s2">          &quot;marca&quot;: null,</span>
+<span class="s2">          &quot;origem&quot;: &quot;Nacional&quot;,</span>
+<span class="s2">          &quot;categoria&quot;: [&quot;Bebidas&quot;, &quot;água&quot;, &quot;água mineral sem gas&quot;]</span>
+<span class="s2">        }</span>
+<span class="s2">      },</span>
+<span class="s2">      &quot;tags&quot;: [&quot;água mineral&quot;, &quot;caixa de 12 garrafas de 500ml&quot;]</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;unidade_comercializacao&quot;: &quot;UN&quot;,</span>
+<span class="s2">    &quot;quantidade_comercializada&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: 24,</span>
+<span class="s2">      &quot;unidade&quot;: &quot;unidades&quot;</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;quantidade_convertida&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: 12,</span>
+<span class="s2">      &quot;unidade&quot;: &quot;caixas&quot;</span>
+<span class="s2">    },</span>
+<span class="s2">    &quot;valor_unitario&quot;: {</span>
+<span class="s2">      &quot;valor&quot;: 2.50,</span>
+<span class="s2">      &quot;moeda&quot;: &quot;BRL&quot;</span>
+<span class="s2">    }</span>
+<span class="s2">  }</span>
+<span class="s2">}</span>
+<span class="s2">```&quot;&quot;&quot;</span>
+
+<div class="viewcode-block" id="NFeMinerBaseGenerateModel.generate">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerBaseGenerateModel.generate">[docs]</a>
+    <span class="nd">@abstractmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates a raw model response based on the given input text.</span>
+
+<span class="sd">        This method must be implemented by any subclass using a specific model architecture</span>
+<span class="sd">        (e.g., local model, OpenAI API, Ollama, etc.).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            text (str): Input text (prompt) to send to the model.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: The generated text response from the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">pass</span></div>
+
+  
+<div class="viewcode-block" id="NFeMinerBaseGenerateModel.json_generate">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerBaseGenerateModel.json_generate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">json_generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">invoice_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">item_id</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">ncm_code</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">gtin_code</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">sales_unit</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">quantity_sold</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">unit_price</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">description</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates a structured JSON representation of an invoice item using the language model.</span>
+
+<span class="sd">        This method constructs a prompt using invoice and product details, invokes the model,</span>
+<span class="sd">        and parses the response into a validated JSON structure.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            invoice_id (str): Unique identifier of the electronic invoice (NFe).</span>
+<span class="sd">            item_id (str): Identifier of the item within the invoice.</span>
+<span class="sd">            ncm_code (str): Mercosur Common Nomenclature (NCM) code used for tax classification.</span>
+<span class="sd">            gtin_code (str): Global Trade Item Number (GTIN), also known as the barcode.</span>
+<span class="sd">            sales_unit (str): Unit of measurement used for selling the item (e.g., &#39;UN&#39;, &#39;kg&#39;).</span>
+<span class="sd">            quantity_sold (float): Quantity of the item sold.</span>
+<span class="sd">            unit_price (float): Unit price of the item.</span>
+<span class="sd">            description (str): Raw item description from the invoice.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            dict: Validated structured JSON dictionary containing enriched product data.</span>
+
+<span class="sd">        Raises:</span>
+<span class="sd">            ValueError: If the model output cannot be parsed as valid JSON or have a incorrect format.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">def</span><span class="w"> </span><span class="nf">json_strip</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">find</span><span class="p">(</span><span class="s1">&#39;{&#39;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">start</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Opening &#39;{&#39; not found in model response.&quot;</span><span class="p">)</span>
+
+            <span class="n">brace_count</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">start</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">x</span><span class="p">)):</span>
+                <span class="k">if</span> <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;{&#39;</span><span class="p">:</span>
+                    <span class="n">brace_count</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">elif</span> <span class="n">x</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="s1">&#39;}&#39;</span><span class="p">:</span>
+                    <span class="n">brace_count</span> <span class="o">-=</span> <span class="mi">1</span>
+
+                <span class="k">if</span> <span class="n">brace_count</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="p">[</span><span class="n">start</span><span class="p">:</span><span class="n">i</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">break</span>
+
+            <span class="k">if</span> <span class="n">brace_count</span> <span class="o">!=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unmatched closing braces in model response. Remaining: </span><span class="si">{</span><span class="n">brace_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;None&#39;</span><span class="p">,</span> <span class="s1">&#39;null&#39;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+        <span class="kn">from</span><span class="w"> </span><span class="nn">json5</span><span class="w"> </span><span class="kn">import</span> <span class="n">loads</span>
+
+        <span class="n">prompt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">invoice_id</span><span class="o">=</span><span class="n">invoice_id</span><span class="p">,</span> <span class="n">item_id</span><span class="o">=</span><span class="n">item_id</span><span class="p">,</span> <span class="n">ncm_code</span><span class="o">=</span><span class="n">ncm_code</span><span class="p">,</span> <span class="n">gtin_code</span><span class="o">=</span><span class="n">gtin_code</span><span class="p">,</span> <span class="n">sales_unit</span><span class="o">=</span><span class="n">sales_unit</span><span class="p">,</span> <span class="n">quantity_sold</span><span class="o">=</span><span class="n">quantity_sold</span><span class="p">,</span> <span class="n">unit_price</span><span class="o">=</span><span class="n">unit_price</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="n">description</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="n">json_strip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">prompt</span><span class="p">))</span>
+
+        <span class="n">parsed</span> <span class="o">=</span> <span class="n">NFeMinerJSONValidator</span><span class="o">.</span><span class="n">model_validate</span><span class="p">(</span><span class="n">loads</span><span class="p">(</span><span class="n">response</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">parsed</span><span class="o">.</span><span class="n">model_dump</span><span class="p">()</span></div>
+</div>
+
+
+<div class="viewcode-block" id="NFeMinerLocalModel">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerLocalModel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerLocalModel</span><span class="p">(</span><span class="n">NFeMinerBaseGenerateModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Local implementation of a fine-tuned language model for structured NFe item extraction.</span>
+
+<span class="sd">    This class loads a model (typically fine-tuned using `NFeFinetuner`) and applies it to</span>
+<span class="sd">    generate structured JSON outputs from textual descriptions of items in Brazilian electronic invoices (NFes).</span>
+<span class="sd">    It uses a standard instruction and formatting template defined in the base class to create consistent prompts.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model (PreTrainedModel): The loaded fine-tuned language model.</span>
+<span class="sd">        tokenizer (PreTrainedTokenizer): Tokenizer associated with the loaded model.</span>
+<span class="sd">        pipe (transformers.Pipeline): Hugging Face pipeline for deterministic text generation.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        model_name (str, optional): Path to the local model directory. Defaults to &quot;models/gemma3_12b-pt_hf&quot;.</span>
+
+<span class="sd">    Methods:</span>
+<span class="sd">        generate(text: str) -&gt; str:</span>
+<span class="sd">            Generates structured output from a single input text using the model.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;models/gemma3_12b-pt_hf&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the local model, tokenizer, and text-generation pipeline.</span>
+
+<span class="sd">        Loads a fine-tuned model using Unsloth&#39;s `FastLanguageModel`, sets it for inference,</span>
+<span class="sd">        and creates a Hugging Face pipeline for text generation with deterministic behavior.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            model_name (str, optional): Local path or identifier of the model. Defaults to &quot;models/gemma3_12b-pt_hf&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">unsloth</span><span class="w"> </span><span class="kn">import</span> <span class="n">FastLanguageModel</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">transformers</span><span class="w"> </span><span class="kn">import</span> <span class="n">pipeline</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span> <span class="o">=</span> <span class="n">FastLanguageModel</span><span class="o">.</span><span class="n">from_pretrained</span><span class="p">(</span><span class="n">model_name</span><span class="o">=</span><span class="n">model_name</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">device_map</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">)</span>
+        <span class="n">FastLanguageModel</span><span class="o">.</span><span class="n">for_inference</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">(</span><span class="s2">&quot;text-generation&quot;</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model</span><span class="p">,</span> <span class="n">tokenizer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">tokenizer</span><span class="p">,</span> <span class="n">device_map</span><span class="o">=</span><span class="s2">&quot;auto&quot;</span><span class="p">,</span> <span class="n">do_sample</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">return_full_text</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+<div class="viewcode-block" id="NFeMinerLocalModel.generate">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerLocalModel.generate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates a structured JSON response based on the input text using the local model.</span>
+
+<span class="sd">        The input is formatted with an instruction and passed through the generation pipeline</span>
+<span class="sd">        to produce a completion suitable for NFe data extraction.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            text (str): Input prompt representing an item description from an NFe.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: The generated JSON-formatted string response from the model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prompt_template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">instruction</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="n">outputs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pipe</span><span class="p">(</span><span class="n">prompt</span><span class="p">,</span> <span class="n">max_new_tokens</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">outputs</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="s2">&quot;generated_text&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span></div>
+</div>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerOpenRouterModel</span><span class="p">(</span><span class="n">NFeMinerBaseGenerateModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implementation of the NFeMiner interface using OpenRouter-hosted language models.</span>
+
+<span class="sd">    This class wraps interactions with the OpenRouter-compatible OpenAI API client,</span>
+<span class="sd">    enabling the generation of structured responses for electronic invoice (NFe) data enrichment</span>
+<span class="sd">    using language models such as GPT-4.1 via the OpenRouter platform.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model_name (str): Identifier for the model to use (e.g., &quot;openai/gpt-4.1&quot;).</span>
+<span class="sd">        base_url (str): URL endpoint for the OpenRouter API.</span>
+<span class="sd">        client (OpenAI): OpenAI client instance configured for OpenRouter.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        api_key (str): OpenRouter API key for authentication.</span>
+<span class="sd">        model_name (str, optional): Model identifier registered with OpenRouter. Defaults to &quot;openai/gpt-4.1&quot;.</span>
+
+<span class="sd">    Methods:</span>
+<span class="sd">        generate(text: str) -&gt; str:</span>
+<span class="sd">            Generates a structured response using the selected model via the OpenRouter API.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">api_key</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">model_name</span><span class="o">=</span><span class="s2">&quot;openai/gpt-4.1&quot;</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the OpenRouter model client for response generation.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            api_key (str): API key to authenticate with the OpenRouter service.</span>
+<span class="sd">            model_name (str, optional): Name or ID of the model to use. Defaults to &quot;openai/gpt-4.1&quot;.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">openai</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">openai</span><span class="w"> </span><span class="kn">import</span> <span class="n">OpenAI</span>
+
+        <span class="n">openai</span><span class="o">.</span><span class="n">api_key</span> <span class="o">=</span> <span class="n">api_key</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_url</span> <span class="o">=</span> <span class="s2">&quot;https://openrouter.ai/api/v1&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">OpenAI</span><span class="p">(</span><span class="n">base_url</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">base_url</span><span class="p">,</span> <span class="n">api_key</span><span class="o">=</span><span class="n">api_key</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates a response from the OpenRouter-hosted model based on the given input.</span>
+
+<span class="sd">        The prompt is composed using the instruction and example templates defined in the base class,</span>
+<span class="sd">        followed by the provided text, and submitted to the chat completion API.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            text (str): Raw text input to be processed by the model.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: The response text generated by the language model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prompt_template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">instruction</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">example</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="n">response</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">chat</span><span class="o">.</span><span class="n">completions</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+            <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span>
+            <span class="n">messages</span><span class="o">=</span><span class="p">[{</span><span class="s2">&quot;role&quot;</span><span class="p">:</span> <span class="s2">&quot;user&quot;</span><span class="p">,</span> <span class="s2">&quot;content&quot;</span><span class="p">:</span> <span class="n">prompt</span><span class="p">}]</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">response</span><span class="o">.</span><span class="n">choices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">message</span><span class="o">.</span><span class="n">content</span>
+
+<div class="viewcode-block" id="NFeMinerOllamaModel">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerOllamaModel">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerOllamaModel</span><span class="p">(</span><span class="n">NFeMinerBaseGenerateModel</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implementation of the NFeMiner interface using a locally hosted Ollama model.</span>
+
+<span class="sd">    This class connects to an Ollama server to run a specified local language model for</span>
+<span class="sd">    processing electronic invoice item descriptions and generating structured enrichment.</span>
+
+<span class="sd">    Attributes:</span>
+<span class="sd">        model_name (str): Name of the model to be used via Ollama (must be pulled beforehand or automatically).</span>
+<span class="sd">        client (ollama.Client): Client used to communicate with the Ollama server.</span>
+<span class="sd">        options (dict): Generation parameters passed to the model (e.g., temperature, top_k, etc.).</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        model_name (str): Name of the Ollama model to use (e.g., &quot;llama3&quot;, &quot;mistral-nfe&quot;).</span>
+<span class="sd">        host (str, optional): URL of the Ollama server. Defaults to &quot;http://localhost:11434&quot;.</span>
+<span class="sd">        options (dict, optional): Generation options for model behavior. Includes temperature, top_k, etc.</span>
+<span class="sd">                                  Defaults to reasonable values for deterministic NFe inference.</span>
+<span class="sd">    </span>
+<span class="sd">    Methods:</span>
+<span class="sd">        generate(text: str) -&gt; str:</span>
+<span class="sd">            Sends a prompt to the Ollama model and returns the generated response.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model_name</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="s1">&#39;http://localhost:11434&#39;</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;temperature&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span> <span class="s1">&#39;top_k&#39;</span><span class="p">:</span> <span class="mi">64</span><span class="p">,</span> <span class="s1">&#39;top_p&#39;</span><span class="p">:</span> <span class="mf">0.95</span><span class="p">,</span> <span class="s1">&#39;repeat_penalty&#39;</span><span class="p">:</span> <span class="mf">1.1</span><span class="p">,</span> <span class="s1">&#39;seed&#39;</span><span class="p">:</span> <span class="mi">777</span><span class="p">,</span> <span class="s1">&#39;num_predict&#39;</span><span class="p">:</span> <span class="mi">16</span><span class="o">*</span><span class="mi">1024</span><span class="p">}):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initializes the Ollama model and pulls it from the registry if needed.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            model_name (str): Name of the model to pull and use.</span>
+<span class="sd">            host (str, optional): Address of the Ollama API server. Defaults to &quot;http://localhost:11434&quot;.</span>
+<span class="sd">            options (dict, optional): Generation options passed to the Ollama model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">ollama</span><span class="w"> </span><span class="kn">import</span> <span class="n">Client</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">subprocess</span>
+
+        <span class="n">subprocess</span><span class="o">.</span><span class="n">run</span><span class="p">([</span><span class="s2">&quot;ollama&quot;</span><span class="p">,</span> <span class="s2">&quot;pull&quot;</span><span class="p">,</span> <span class="n">model_name</span><span class="p">],</span> <span class="n">check</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">model_name</span> <span class="o">=</span> <span class="n">model_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client</span> <span class="o">=</span> <span class="n">Client</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="n">host</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">options</span> <span class="o">=</span> <span class="n">options</span>
+
+<div class="viewcode-block" id="NFeMinerOllamaModel.generate">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.enrichment.NFeMinerOllamaModel.generate">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates a response from the Ollama-hosted local model based on the provided input.</span>
+
+<span class="sd">        Constructs a formatted prompt using instruction and example templates, then sends it</span>
+<span class="sd">        to the Ollama model with the specified generation options.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            text (str): The input text to be processed by the model.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            str: The response generated by the Ollama model.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">prompt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">prompt_template</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">instruction</span><span class="si">}</span><span class="se">\n</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">example</span><span class="si">}</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">text</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">client</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">model_name</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="n">prompt</span><span class="p">,</span> <span class="n">options</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">options</span><span class="p">)[</span><span class="s1">&#39;response&#39;</span><span class="p">]</span></div>
+</div>
+
+
+<span class="n">__all__</span> <span class="o">=</span> <span class="p">[</span><span class="s2">&quot;NFeMinerJSONValidator&quot;</span><span class="p">,</span> <span class="s2">&quot;NFeMinerBaseGenerateModel&quot;</span><span class="p">,</span> <span class="s2">&quot;NFeMinerLocalModel&quot;</span><span class="p">,</span> <span class="s2">&quot;NFeMinerGPTModel&quot;</span><span class="p">,</span> <span class="s2">&quot;NFeMinerOllamaModel&quot;</span><span class="p">]</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, ..</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

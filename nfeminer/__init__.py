@@ -22,18 +22,6 @@ class NFeMiner:
         model (NFeMinerBaseGenerateModel): Instance of a compatible model that implements `json_generate`.
         index_file_path (str): Path to a JSON or CSV file containing products to index. If None, indexing is skipped.
         index_name (str, optional): Name of the Elasticsearch index to use. Defaults to "nfe_products".
-
-    Methods:
-        enrichment(...)
-        enrichment_and_index(...)
-        search_string(...)
-        search_all()
-        search_numeric_term(...)
-        search_numeric_range(...)
-        search_combined(...)
-        gtin_estimator(...)
-        gtin_estimator_batch(...)
-        clustering(...)
     """
 
     def __init__(self, model: NFeMinerBaseGenerateModel, index_file_path: str, index_name="nfe_products"):

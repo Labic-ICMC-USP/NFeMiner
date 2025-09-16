@@ -16,3 +16,5 @@ hf_xet
 openpyxl
 openai
 json5
+sphinx
+sphinx-rtd-theme
