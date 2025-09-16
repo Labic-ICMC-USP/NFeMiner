@@ -17,4 +17,5 @@ openpyxl
 openai
 json5
 sphinx
+networkx
 sphinx-rtd-theme
