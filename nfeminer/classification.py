@@ -34,7 +34,7 @@ class NFeModelCreator:
     
     def __init__(self, 
                  data: pd.DataFrame, 
-                 trusted_records: int = 1, 
+                 trusted_records: int = 100, 
                  vectorizer: str = 'TFIDF_CHAR_NGRAM',
                  embedding: str = 'SBERT',
 
