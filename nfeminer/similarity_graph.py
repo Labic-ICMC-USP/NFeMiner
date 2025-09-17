@@ -95,7 +95,7 @@ class BERTEmbeddingEdgeGenerator(EdgeGenerator):
             self.model = SentenceTransformer(model)
         else:
             self.model = model
-
+    
     def generate_edges(self, field_text: str = 'text',ID_NFE_COLUMN:str='id_nfe') -> pd.DataFrame:
         """Compute pairwise semantic similarity and return edges with scores.
 
@@ -141,7 +141,7 @@ class BERTEmbeddingEdgeGenerator(EdgeGenerator):
                     'similarity_score': score
                 })
 
-        return pd.DataFrame(edges)
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
 class NCMSimilarityEdgeGenerator(EdgeGenerator):
     """Generate edges between records that share the same NCM value.
@@ -177,7 +177,7 @@ class NCMSimilarityEdgeGenerator(EdgeGenerator):
                         "edge_type": "ncm_similarity",
                         "similarity_score": 1
                     })
-        return pd.DataFrame(edges)
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
 class ValueRangeEdgeGenerator(EdgeGenerator):
     """Generate edges for rows whose numeric field falls within a given range.
@@ -263,7 +263,7 @@ class ValueRangeEdgeGenerator(EdgeGenerator):
                         "similarity_score": sim
                     })
 
-        return pd.DataFrame(edges)
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
 class StringMatchEdgeGenerator(EdgeGenerator):
     """Generate edges between records whose text fields are nearly identical.
@@ -304,7 +304,7 @@ class StringMatchEdgeGenerator(EdgeGenerator):
                         "edge_type": "string_match",
                         "similarity_score": sim
                     })
-        return pd.DataFrame(edges)
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
 class PriceBandEdgeGenerator(EdgeGenerator):
     """
@@ -375,4 +375,4 @@ class PriceBandEdgeGenerator(EdgeGenerator):
                     "edge_type": "price_band",
                     "similarity_score": sim
                 })
-        return pd.DataFrame(edges)
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
