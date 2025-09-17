@@ -123,9 +123,6 @@ class NFeModelCreator:
             .sort_values(by='count', ascending=False)
         )
 
-        print('#'*50)
-        print(data_count)
-
         # Filter to keep only descriptions with counts above the trusted_records threshold
         data_filtered = data_count[data_count['count'] >= self.trusted_records]
 
