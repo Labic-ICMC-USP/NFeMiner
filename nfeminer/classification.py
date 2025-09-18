@@ -120,10 +120,11 @@ class NFeModelCreator:
             .groupby(['gtin', 'original'])
             .size()
             .reset_index(name='count')
+            .sort_values(by='count', ascending=False)
         )
 
         # Filter to keep only descriptions with counts above the trusted_records threshold
-        data_filtered = data_count[data_count['count'] > self.trusted_records]
+        data_filtered = data_count[data_count['count'] >= self.trusted_records]
 
         # Group by GTIN, aggregating original descriptions into sets
         model = (
@@ -132,7 +133,7 @@ class NFeModelCreator:
             .agg(set)
             .reset_index()
             # For each GTIN row, filter descriptions unique to that GTIN
-            .assign(string_match=lambda df: df.apply(lambda row: self.get_unique_descriptions(row, df), axis=1))
+            .assign(string_match=lambda df: df.apply(lambda row: self.get_unique_descriptions(row, df), axis=1) if not df.empty else {})
             # Keep only rows where there are unique descriptions
             .loc[lambda df: df['string_match'].apply(bool)]
             # Convert sets back to lists for easier processing
@@ -271,6 +272,9 @@ class NFeModelCreator:
         # Collect sets of descriptions from other GTINs (excluding current)
         other_sets = all_data[all_data['gtin'] != current_gtin]['original']
 
+        if other_sets.empty:
+            return {}
+        
         # Union all descriptions from other GTINs
         combined_others = set().union(*other_sets)
 

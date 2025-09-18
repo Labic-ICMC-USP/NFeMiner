@@ -182,18 +182,18 @@ class NFeMiner:
         }
         return self.elasticsearch.document_service.search_documents(self.index_name, query)
 
-    def gtin_estimator(self, training_description_gtin: list[str], classify_descriptions: list[list[str, str]]) -> List[dict]:
+    def gtin_estimator(training_description: list[str], training_gtin: list[str], classify_descriptions: list[str]) -> List[dict]:
         """
         Predict GTIN values for multiple product descriptions.
 
         Args:
-            training_description_gtin (list[list[str]]):
-                List of training pairs [description, gtin] used to train the model.
-                Example:
-                    training_description_gtin = [
-                        ['Carne bovina', '465465'],
-                        ['Carne porco', '4654564']
-                    ]
+            training_description (list[str]):
+                List of training descriptions used to train the model.
+                Example: training_description_gtin = ['Carne bovina','Carne porco']
+
+            training_gtin (list[str]):
+                List of training gtin used to train the model.
+                Example: training_gtin = ['465465','4654564']
 
             classify_descriptions (list[str]):
                 List of unlabeled product descriptions for classification.
@@ -209,7 +209,7 @@ class NFeMiner:
         import pandas as pd
 
         # Dataframes
-        training = pd.DataFrame(training_description_gtin, columns=['original', 'gtin'])
+        training = pd.DataFrame({'original': training_description, 'gtin': training_gtin})
         unlabeled = pd.DataFrame({'original': classify_descriptions,'gtin': pd.NA})
         
         # Training Model
