@@ -59,16 +59,7 @@ class NFeFinetuner:
             config (dict): Configuration dictionary for model and training.
         """
         self.config = config
-        dataset = Dataset.from_pandas(df)
-        self.dataset = dataset.map(
-            lambda examples: {
-                "text": [
-                    f"{NFeMinerBaseGenerateModel.instruction}\n{inp}\n{out}{self.tokenizer.eos_token}"
-                    for inp, out in zip(examples["prompt"], examples["json"])
-                ]
-            },
-            batched=True
-        )
+        self.dataset = Dataset.from_pandas(df)
 
     def train(self, progress_callback=None):
         """
@@ -87,6 +78,16 @@ class NFeFinetuner:
         model, self.tokenizer = FastModel.from_pretrained(**self.config["FastModel.from_pretrained"])
         self.model = FastModel.get_peft_model(model, **self.config["FastModel.get_peft_model"])
         config = SFTConfig(dataset_text_field="text", **self.config["SFTConfig"])
+
+        self.dataset = self.dataset.map(
+            lambda examples: {
+                "text": [
+                    f"{NFeMinerBaseGenerateModel.instruction}\n{inp}\n{out}{self.tokenizer.eos_token}"
+                    for inp, out in zip(examples["prompt"], examples["json"])
+                ]
+            },
+            batched=True
+        )
 
         trainer = SFTTrainer(
             model=self.model,
