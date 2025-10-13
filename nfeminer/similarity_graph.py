@@ -4,6 +4,11 @@ import networkx as nx
 from sentence_transformers import SentenceTransformer, util
 from difflib import SequenceMatcher
 from typing import Union, Any, Optional
+import torch
+import umap
+from sklearn.preprocessing import normalize
+import numpy as np
+
 
 class EdgeGenerator(ABC):
     def __init__(self, df: pd.DataFrame):
@@ -75,26 +80,36 @@ class BERTEmbeddingEdgeGenerator(EdgeGenerator):
         model (SentenceTransformer): SentenceTransformer instance used to encode texts.
         df (pd.DataFrame): Input DataFrame provided by the base class.
     """
-
+    
     def __init__(
         self,
         df: pd.DataFrame,
         model: Union[str, SentenceTransformer] = 'sentence-transformers/all-MiniLM-L6-v2',
+        umap_kwargs={
+            'n_neighbors':5,
+            'min_dist':0.01,
+            'n_components':5,
+            'random_state':42,
+        }
     ) -> None:
         """Initialize the edge generator.
-
+        
         Args:
             df (pd.DataFrame): Input DataFrame. Must contain a column matching
                 `ID_NFE_COLUMN` (passed in generate_edges) and the text column you will pass to `generate_edges`.
             model (str | SentenceTransformer): If a string, the corresponding
                 SentenceTransformer model is loaded; if an instance is provided,
                 it is used directly. Defaults to 'sentence-transformers/all-MiniLM-L6-v2'.
+            umap_kwargs (None | dict): Keeps the information of
         """
         super().__init__(df)
         if isinstance(model, str):
             self.model = SentenceTransformer(model)
         else:
             self.model = model
+            
+        if umap_kwargs is not None:
+            self.umap_model = umap.UMAP(metric='cosine',**umap_kwargs)
     
     def generate_edges(self, field_text: str = 'text',ID_NFE_COLUMN:str='id_nfe') -> pd.DataFrame:
         """Compute pairwise semantic similarity and return edges with scores.
@@ -125,9 +140,22 @@ class BERTEmbeddingEdgeGenerator(EdgeGenerator):
 
         # Encode texts to embeddings (tensor). Let SentenceTransformer handle device placement.
         embeddings = self.model.encode(texts, convert_to_tensor=True)
-
-        # Compute pairwise cosine similarity matrix (torch tensor)
-        sim_matrix = util.pytorch_cos_sim(embeddings, embeddings)
+        embeddings = normalize(embeddings,norm='l2') ## norm l2
+        
+        if hasattr(self,'umap_model'): ## if has an umap model, uses it
+            data_lowdim = self.umap_model.fit_transform(embeddings)
+            
+            ## euclidean distance matrix
+            norms = np.sum(data_lowdim ** 2, axis=1, keepdims=True)
+            dist_sq = norms + norms.T - 2 * np.dot(data_lowdim, data_lowdim.T)
+            dist_sq = np.clip(dist_sq, a_min=0.0, a_max=None)
+            dist_matrix = np.sqrt(dist_sq)
+            
+            sim_matrix = 1 / (1 + dist_matrix) ## similarity matrix
+        
+        else:
+            # Compute pairwise cosine similarity matrix (torch tensor)
+            sim_matrix = util.pytorch_cos_sim(embeddings, embeddings)
 
         edges = []
         num_rows = len(ids)
