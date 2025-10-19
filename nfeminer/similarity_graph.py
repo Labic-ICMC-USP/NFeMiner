@@ -290,7 +290,63 @@ class ValueRangeEdgeGenerator(EdgeGenerator):
                         "edge_type": "value_range",
                         "similarity_score": sim
                     })
+        
+        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
+class ValueDifferenceEdgeGenerator(EdgeGenerator):
+    """Generate edges for rows whose numeric field diverges in a range.
+    
+    Edges are produced only between rows that:
+      * have the `field_valor` with a difference of `difference_range`
+    """
+    
+    def generate_edges(
+        self,
+        difference_range:float,
+        field_valor: str = 'valor',
+        ID_NFE_COLUMN:str='id_nfe'
+    ) -> pd.DataFrame:
+        """Create edges for records with `field_valor` inside [min_value, max_value].
+        
+        Args:
+            difference_range (float): caso a diferença no `field_valor` seja maior que `difference_range`, 
+                então cria uma aresta com similarity = 1 - (diffAB)/difference_range.
+            field_valor (str): Column name that contains the numeric value.
+            field_group (str): Column name used to group rows (edges only inside group).
+
+        Returns:
+            pd.DataFrame: DataFrame with columns ['source', 'target', 'edge_type', 'similarity_score'].
+
+        Raises:
+            KeyError: If required columns are missing from the DataFrame.
+        """
+        # Basic validations
+        if field_valor not in self.df.columns:
+            raise KeyError(f"DataFrame must contain column '{field_valor}'")
+        if ID_NFE_COLUMN not in self.df.columns:
+            raise KeyError(f"DataFrame must contain column '{ID_NFE_COLUMN}'")
+        
+        
+        edges = []
+        for i, (iidx, row_i) in enumerate(self.df.iterrows()):
+            for j, (jidx, row_j) in enumerate(self.df.iterrows()):
+                if i >= j:
+                    continue
+                value_i = row_i[field_valor]
+                value_j = row_j[field_valor]
+                
+                if abs(value_i-value_j)>difference_range:
+                    continue
+                
+                sim = 1 - (abs(value_i-value_j)/difference_range)
+
+                edges.append({
+                    "source": row_i[ID_NFE_COLUMN],
+                    "target": row_j[ID_NFE_COLUMN],
+                    "edge_type": "value_difference",
+                    "similarity_score": sim
+                })
+        
         return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
 
 class StringMatchEdgeGenerator(EdgeGenerator):

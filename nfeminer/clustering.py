@@ -866,7 +866,7 @@ class NFeCluster():
                 Defaults to 'deep_clique'.
             clustering_method_params (dict, optional): Parameters for the clustering method.
                 Defaults to an empty dict.
-
+        
         Returns:
             tuple:
                 - dict: A mapping from node ID (`id_nfe`) to its assigned cluster label.
