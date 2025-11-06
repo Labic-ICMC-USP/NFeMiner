@@ -6,6 +6,13 @@ from collections import Counter
 from itertools import chain
 from .similarity_graph import *
 
+import nltk
+import re
+from unidecode import unidecode
+from nltk.corpus import stopwords
+
+nltk.download('stopwords')
+
 ## community_algorithms:
 
 from networkx.algorithms.community import girvan_newman
@@ -15,6 +22,20 @@ from networkx.algorithms.community import k_clique_communities
 from networkx.algorithms.community import kernighan_lin_bisection
 from typing import Dict, Any, List, Tuple, Optional, Union
 from types import SimpleNamespace
+import re
+from sklearn.feature_extraction.text import CountVectorizer
+
+
+def clear_text(texto: str) -> str:
+    """
+    Remove accents and stopwords from text
+    """
+    texto_sem_acentos = unidecode(texto.lower())
+    texto_limpo = re.sub(r'[^a-z\s]', '', texto_sem_acentos)
+    palavras = texto_limpo.split()
+    stopwords_pt = set(stopwords.words('portuguese'))
+    palavras_filtradas = [p for p in palavras if p not in stopwords_pt]
+    return ' '.join(palavras_filtradas)
 
 def direct_nearest_neighbors(G: nx.Graph,
                              node_id: Any,
@@ -210,7 +231,7 @@ class CGraph():
             CGraph: New CGraph wrapping the induced subgraph.
         """
         return CGraph(self.G.subgraph(nodes))
-
+    
     def nxcluster(self, method: str, **params):
         """Apply a NetworkX clustering/community detection method to self.G.
 
@@ -377,7 +398,7 @@ class CGraph():
         unknown_nodes = [node_id for node_id, label in nodes.items() if label == -1]
         nx.set_node_attributes(self.G, nodes, 'label')  # restore labels to the graph
         return CGraph(self.G.subgraph(unknown_nodes))
-
+    
     def __lshift__(self, other):
         """Assign labels from a subgraph (or a single label) back to this graph.
 
@@ -411,7 +432,7 @@ class CGraph():
             self.next_label = other + 1
             nx.set_node_attributes(self.G, other, 'label')
             return self
-
+    
     def set_labels(self, node_ids: list[str], label):
         """Set `label` for the given list of node IDs.
 
@@ -453,7 +474,7 @@ class CGraph():
             nx.set_node_attributes(new_cgraph.G, source_attrs, attr)
 
         return new_cgraph
-
+    
     @classmethod
     def pattern(cgraph_cls, my_graph, pattern_graph, method: str, from_my_graph=True):
         """Modify a graph based on the structure of another pattern graph.
@@ -648,7 +669,7 @@ class Analyser:
         for graph in Gs[1:]:
             final_graph = CGraph.pattern(final_graph, graph, 'cut_edges')
         return final_graph
-
+    
     def group_merging(self, graph: CGraph, merging_threshold:float, maximize:bool=True, iters:int=5, kneighbors:int=7, 
                       core_len:int=3, verbose:bool=False) -> CGraph:
         """
@@ -768,6 +789,115 @@ class Analyser:
                 print("\n"*15)
             
         return atual_graph
+    
+    
+    def get_topics(self, graph: CGraph, textual_column:str):
+        corpus = np.array(list(nx.get_node_attributes(graph.G,textual_column).values()))
+        labels = np.array(list(nx.get_node_attributes(graph.G,'label').values()))
+        unique_indexes = np.unique(corpus,return_index=True)[1]
+        
+        corpus = corpus[unique_indexes]
+        labels = labels[unique_indexes]
+        
+        ## limpa os textos
+        corpus = np.array(list(map(clear_text,corpus.tolist())))
+        
+        
+        subgraphs = graph.dismember()
+        unique_labels = list(subgraphs.keys())
+        
+        max_features = len(unique_labels)*3 ## considerando um max_features igual a 3x a quantidade de clusters
+        print("Max features: ",max_features)
+        
+        ## o custom tokenizer serve pra deixar lower, quebrar por espaços e retirar palavras com treatment, que aparece escrito errado na base muitas vezes
+        def custom_tokenizer(text):
+            # Extrai tokens de letras
+            tokens = re.findall(r'\b[a-zA-Z]+\b', text.lower())
+            # Remove qualquer palavra que termine com "treatment"
+            tokens = [t.replace('treatment','') for t in tokens]
+            return tokens
+        
+        ## achando contagens com o countvectorizer
+        vectorizer = CountVectorizer(stop_words='english',
+                                    tokenizer=custom_tokenizer,
+                                    lowercase=False,
+                                    ngram_range=(1,1),
+                                    max_features=max_features)
+        X_counts = vectorizer.fit_transform(corpus)
+        terms = vectorizer.get_feature_names_out()
+        
+        ## achando a frequencia de cada termo para cada cluster
+        n_terms = len(terms)
+        tf_per_class = np.zeros((len(unique_labels), n_terms), dtype=float)
+        class_totals = np.zeros(len(unique_labels), dtype=float)
+        
+        for i, c in enumerate(unique_labels):
+            mask = (labels == c)  ## máscara para os dados que forem do cluster c
+            class_sum = X_counts[mask].sum(axis=0)     # X é (dados x termos) então soma todos os dados com a máscara, ficando (,termos)
+            class_sum = np.asarray(class_sum).ravel()
+            tf_per_class[i, :] = class_sum
+            class_totals[i] = class_sum.sum()          # total de tokens na classe
+
+        ## frequencia global dos termos (n_terms,)
+        f_x = tf_per_class.sum(axis=0)
+
+        ## media de palavras por classe
+        A = class_totals.mean()
+
+        ## normalização na matrix tf
+        tf_norm = np.zeros_like(tf_per_class)
+        for i in range(len(unique_labels)):
+            denom = class_totals[i] if class_totals[i] > 0 else 1.0
+            tf_norm[i, :] = tf_per_class[i, :] / denom
+
+        ## calculando c-TF-IDF
+        eps = 1e-9
+        idf_like = np.log1p(A / (f_x + eps))  # shape (n_terms,)
+        c_tfidf = tf_norm * idf_like[np.newaxis, :]  # shape (n_classes, n_terms)
+
+        ## Calculando os topk termos de cada um
+        label2topterms = {}
+        used_terms = set()
+        for i,c in enumerate(unique_labels):
+            top_idxs = np.argsort(c_tfidf[i])[::-1][:10]
+            top_terms = [(terms[j], c_tfidf[i, j]) for j in top_idxs]
+            used_terms.update(set([term for term, _ in top_terms]))
+            label2topterms[c] = top_terms
+        used_terms = list(used_terms)
+
+
+        print(f"All terms: ({len(used_terms)})")
+        columns = 5
+        max_len = max([len(f) for f in used_terms])+3
+        for i in range(0,max_features,columns):
+            print("".join([f+(max_len-len(f))*" " for f in used_terms[i:i+columns]]))
+
+
+        # min_threshold = 0.3
+        for i, c in enumerate(unique_labels[:8]):
+            top_terms = label2topterms[c]
+            mean_score = np.mean([score for _, score in top_terms])
+            top_terms = [(term,score) for term,score in top_terms if score>mean_score*0.5]
+
+            title = f"\nClasse {c}: mean score: {mean_score:.2f} "
+            print(title,'-'*(60-len(title)))
+            for term, score in top_terms:
+                print(f"  {term:<25} {score:.4f}")
+
+
+            ## pega documentos aleatórios de cada cluster
+            # sampled_dfuses = df_uses.iloc[labels==c].sample(5)
+            # for idx,doc in sampled_dfuses.iterrows():
+            #     print(f"        [{idx:5}] {doc["Uses"].lstrip()}")
+            
+            
+            
+            sampled_dfuses_idxs = random.choices(np.where(labels==c)[0],k=5)
+            sampled_dfuses = corpus[sampled_dfuses_idxs]
+            for doc in sampled_dfuses:
+                print(f"        {doc.lstrip()}")
+            
+            print("\n\n\n\n")
 
 CLUSTERING_DEFAULTS = SimpleNamespace(
     STRINGMATCH_THRESHOLD=0.9,                      ## threshold do stringmatch
@@ -848,7 +978,9 @@ class NFeCluster():
             raise ValueError(f"graph_type '{graph_type}' is not allowed. It must be 'dismember' or 'merging'")
         
         self.nfes_provided = not not_nfe
-        self.graphs[graph_type].append(CGraph(data,name=name))
+        
+        g = data if isinstance(data,CGraph) else CGraph(data,name=name)
+        self.graphs[graph_type].append(g)
 
     def cluster(self,apply_merging=False, clustering_method='deep_clique',clustering_method_params={}):
         """
