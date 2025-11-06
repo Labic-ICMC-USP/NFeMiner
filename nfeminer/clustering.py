@@ -796,7 +796,7 @@ class NFeCluster():
                 By default, it's the string 'sentence-transformers/all-MiniLM-L6-v2', but if you 
                 want to use a pre-installed model, you can pass a SentenceTransformer instance. See 
                 more about the usage in the class similarity_graph.BERTEmbeddingEdgeGenerator with the 
-                parameter 'model'. 
+                parameter 'model'. If it's None, the model won't be downloaded.
             
             data (list[str] | pd.DataFrame): specifies the data that will be clustered. By default, it's None, indicating
                 that it will be passed after initialization using the method 'add_data' (it's recommended to use this 
@@ -805,7 +805,11 @@ class NFeCluster():
                 be created using values from CLUSTERING_DEFAULTS.
         """
                 
-        self.embedding_model = embedding_model or 'sentence-transformers/all-MiniLM-L6-v2'
+        self.embedding_model = embedding_model # or 'sentence-transformers/all-MiniLM-L6-v2'
+        
+        if self.embedding_model is not None:
+            if type(self.embedding_model) == str:
+                self.embedding_model = SentenceTransformer(self.embedding_model) ## downloads model
         
         ## dict in the format: {'dismember':[cgraph1,cgraph2...], 'merging':[cgraph1,cgraph2...]}
         ## graphs under 'dismember' are used to separate different types of clusters using their edges
@@ -919,3 +923,21 @@ class NFeCluster():
             only_labels = [str(unsorted_labels[idx]) for idx in sorted_idx]
             return only_labels, all_cutted ## list[str] , CGraph
         return idnfe2label, all_cutted
+
+    @classmethod
+    def pipeline(cls,df:pd.DataFrame,merge=False):
+        """
+        Applies a pipeline in dataframe, considerando as colunas:
+        - id_item: tratado como o id
+        - preco: utilizado para separar por value difference
+        - produto_base_clear: para separar com stringmatch
+        - produto_detalhado: caso merge=True, realiza o merge utilizando esse campo
+        """
+        
+        ## preco
+        edge_gen = 
+        
+        edge_gen = StringMatchEdgeGenerator(data)
+        edges_df = edge_gen.generate_edges(field_str=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR)
+        sm_graph = build_graph(data,edges_df,column_name=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE)
+        self.add_data(sm_graph,graph_type='dismember',not_nfe=False)
