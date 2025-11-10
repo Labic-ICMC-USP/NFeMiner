@@ -5,6 +5,7 @@ import random
 from collections import Counter
 from itertools import chain
 from .similarity_graph import *
+import itertools
 
 ## community_algorithms:
 
@@ -303,7 +304,7 @@ class CGraph():
             self.multilabels.append(result)
         else:
             raise ValueError(f"SS method [{method}] not allowed")
-
+    
     def core(self, topk: int | None = None, method: str = 'degree', weight=None, return_scores=False):
         """Select the most representative nodes according to a centrality/core metric.
 
@@ -513,6 +514,22 @@ class CGraph():
         """
         return direct_nearest_neighbors(self.G, node_id, k, weight=weight, maximize=maximize)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class Analyser:
     """
     A class for analyzing and manipulating CGraph cluster structures.
@@ -648,9 +665,15 @@ class Analyser:
         for graph in Gs[1:]:
             final_graph = CGraph.pattern(final_graph, graph, 'cut_edges')
         return final_graph
-
+    
     def group_merging(self, graph: CGraph, merging_threshold:float, maximize:bool=True, iters:int=5, kneighbors:int=7, 
-                      core_len:int=3, verbose:bool=False) -> CGraph:
+                      core_len:int=1, verbose:bool=False,model_name:str='sentence-transformers/all-MiniLM-L6-v2',
+                      umap_kwargs={
+                            'n_neighbors':5,
+                            'min_dist':0.5,
+                            'n_components':15,
+                            'random_state':42,
+                        }) -> CGraph:
         """
         Perform group merging based on similarity between representative components.
 
@@ -674,6 +697,10 @@ class Analyser:
         
         atual_graph = graph.copy()
         
+        ## modelos utilizados
+        model = SentenceTransformer(model_name)
+        umap_model = umap.UMAP(metric='cosine',**umap_kwargs)
+        
         for i_iter in range(iters):    
             # Filter to keep only representatives
             subgraphs = atual_graph.dismember()
@@ -691,6 +718,39 @@ class Analyser:
             only_representatives = atual_graph.subgraph(list(chain.from_iterable(coretuple2subgraph.keys())))
             if verbose:
                 print("Number of only_representatives: ", len(only_representatives))
+            
+            ## calcula a similaridade entre os textos
+            nodes_text_pairs = [(n, f"base: {d.get('produto_base')} detalhado: {d.get('produto_detalhado')}" ) for n, d in only_representatives.nodes(data=True)]
+            texts = [t for n, t in nodes_text_pairs if t is not None]
+            
+            embeddings = model.encode(texts, convert_to_tensor=True)
+            embeddings = normalize(embeddings,norm='l2') ## norm l2
+            data_lowdim = umap_model.fit_transform(embeddings)
+            
+            ## euclidean distance matrix
+            norms = np.sum(data_lowdim ** 2, axis=1, keepdims=True)
+            dist_sq = norms + norms.T - 2 * np.dot(data_lowdim, data_lowdim.T)
+            dist_sq = np.clip(dist_sq, a_min=0.0, a_max=None)
+            dist_matrix = np.sqrt(dist_sq)
+            
+            sim_matrix = 1 / (1 + dist_matrix) ## similarity matrix
+            # print("matriz de similaridade feita")
+            ## cria as edges
+            edges_to_add = []
+            for i, j in itertools.combinations(range(len(nodes_text_pairs)), 2):
+                n1 = nodes_text_pairs[i][0]
+                n2 = nodes_text_pairs[j][0]
+                score = float(sim_matrix[i, j])  # converter para float padrão Python (evita tensor)
+                edges_to_add.append((n1, n2, {"similarity_score": score}))
+
+            # Adiciona todas as arestas de uma vez (muito mais rápido)
+            only_representatives = nx.Graph()
+            only_representatives.add_nodes_from(
+                (n, atual_graph.G.nodes[n]) for n in chain.from_iterable(coretuple2subgraph.keys())
+            )
+            only_representatives.add_edges_from(edges_to_add)
+            only_representatives = CGraph(only_representatives)
+            
             
             # Begin merging process
             same_groups = {}
@@ -730,8 +790,13 @@ class Analyser:
             groups = {label: node_ids for label, node_ids in groups.items() if len(node_ids) > 1}
             
             if verbose:
-                print("Merging groups: ")
+                print("Junção de grupos antigos: ")
                 print(groups)
+                for newlabel,groupas in groups.items():
+                    print(f"newlabel: {newlabel} -------- ")
+                    for old_node_id_representative in groupas:
+                        d = only_representatives[old_node_id_representative]
+                        print('  ',f"[{d['label']}] {d['original']:30} | {d['produto_base']:30} | {d['produto_detalhado']}")
             
             if len(groups) == 0:
                 if verbose:
@@ -763,9 +828,10 @@ class Analyser:
             
             # Display current representatives
             if verbose:
-                print("\n\n\n\nProcess finished, showing representatives")
-                self.show_representatives(atual_graph, n_objs=15)
                 print("\n"*15)
+                pass
+                # print("\n\n\n\nProcess finished, showing representatives")
+                # self.show_representatives(atual_graph, n_objs=15,ID_GTIN_COLUMN='gtin')
             
         return atual_graph
 
@@ -776,11 +842,11 @@ CLUSTERING_DEFAULTS = SimpleNamespace(
     GRAPHBUILDER_FIELD_STR="produto_detalhado",     ## coluna do dataframe utilizado como fonte do texto
     MAX_ITER_CLIQUE=30,                             ## quantidade de vezes que ele vai rodar o clique
     STEP_CLIQUE=3,                                  ## step de cada iteração do clique
-    GROUP_MERGING_THRESHOLD=0.9,                    ## threshold mínimo para se fazer o merging de grupos
+    GROUP_MERGING_THRESHOLD=0.7,                    ## threshold mínimo para se fazer o merging de grupos
     MERGING_MAXIMIZE=True,                          ## a ideia é a fazer uma maximização da similaridade de merging
-    MERGING_ITERS=3,                                ## quantidade de iterações que se faz o group merging
+    MERGING_ITERS=1,                                ## quantidade de iterações que se faz o group merging
     MERGING_KN=5,                                   ## quantidade de grupos de representativos comparados por vez
-    MERGING_CORE=3                                  ## quantidade de representativos por grupo
+    MERGING_CORE=1                                  ## quantidade de representativos por grupo
 )
 
 class NFeCluster():
@@ -897,20 +963,26 @@ class NFeCluster():
             all_cutted.nxcluster(clustering_method, **clustering_method_params)
         
         ## apply merging if requested
+        # print("\n\n\n\Antes do merging:")
+        # analyser.show_representatives(all_cutted, n_objs=5,ID_GTIN_COLUMN='gtin')
+        # print("\n"*15)
         if apply_merging:
-            if len(self.graphs['merging']) == 0:
-                pass
-                # print("There are no graphs of 'merging' type. Ignoring merging phase")
-            else:
+            # if len(self.graphs['merging']) == 0:
+            #     print("There are no graphs of 'merging' type. Ignoring merging phase")
+            #     pass
+            # else:
+            try:
                 all_cutted = analyser.group_merging(
                     all_cutted,
+                    verbose=True,
                     merging_threshold=CLUSTERING_DEFAULTS.GROUP_MERGING_THRESHOLD,
                     maximize=CLUSTERING_DEFAULTS.MERGING_MAXIMIZE,
                     iters=CLUSTERING_DEFAULTS.MERGING_ITERS,
                     kneighbors=CLUSTERING_DEFAULTS.MERGING_KN,
                     core_len=CLUSTERING_DEFAULTS.MERGING_CORE
                 )
-        
+            except Exception as e:
+                pass
         ## prepare output
         ## the output is in the format: id_nfe:label
         idnfe2label = dict(all_cutted.nodes(data='label'))  ## note: node ID is the same as id_nfe
@@ -925,19 +997,50 @@ class NFeCluster():
         return idnfe2label, all_cutted
 
     @classmethod
-    def pipeline(cls,df:pd.DataFrame,merge=False):
+    def pipeline(cls,data:pd.DataFrame,merge=False,
+                 price_diff=3.0):
         """
         Applies a pipeline in dataframe, considerando as colunas:
         - id_item: tratado como o id
-        - preco: utilizado para separar por value difference
+        - preco: utilizado para separar por value difference (usa o price_diff)
         - produto_base_clear: para separar com stringmatch
         - produto_detalhado: caso merge=True, realiza o merge utilizando esse campo
         """
+        ID_COLUMN = 'id_item'
+        PRECO = 'preco'
+        BASE_CLEAR = 'produto_base_clear'
+        DETALHADO = 'produto_detalhado'
         
-        ## preco
-        edge_gen = 
+        ## tratamento de None/NaN:
+        values = {
+            PRECO:-2*price_diff, ## considera como sendo um preço inválido
+            BASE_CLEAR:'',
+            DETALHADO:'',
+        }
+        data = data.fillna(values)
+        clusterer = cls(data)
         
+        # ## preco
+        # edge_gen = ValueDifferenceEdgeGenerator(data)
+        # edges_df = edge_gen.generate_edges(price_diff,field_valor=PRECO,ID_NFE_COLUMN=ID_COLUMN)
+        # price_graph = build_graph(data,edges_df,column_name=ID_COLUMN)
+        # clusterer.add_data(price_graph,graph_type='dismember',not_nfe=False)
+        
+        ## produto_base_clear
         edge_gen = StringMatchEdgeGenerator(data)
-        edges_df = edge_gen.generate_edges(field_str=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_STR)
-        sm_graph = build_graph(data,edges_df,column_name=CLUSTERING_DEFAULTS.GRAPHBUILDER_FIELD_IDNFE)
-        self.add_data(sm_graph,graph_type='dismember',not_nfe=False)
+        edges_df = edge_gen.generate_edges(field_str=BASE_CLEAR,ID_NFE_COLUMN=ID_COLUMN,threshold=0.9)
+        pbc_graph = build_graph(data,edges_df,column_name=ID_COLUMN)
+        clusterer.add_data(pbc_graph,graph_type='dismember',name='stringmatch',not_nfe=False)
+        
+        ## produto_base_detalhado
+        
+        
+        ## Aplica o método de clusterização
+        id2label, output_graph = clusterer.cluster(apply_merging=True,
+                                                   clustering_method='label_propagation')
+        
+        
+        aaaa = output_graph.dismember()
+        # print("aaaa: ",len(aaaa))
+        data['clusters'] = data[ID_COLUMN].map(lambda id__: id2label[id__])
+        return data
