@@ -1036,11 +1036,10 @@ class NFeCluster():
         
         
         ## Aplica o método de clusterização
-        id2label, output_graph = clusterer.cluster(apply_merging=True,
+        id2label, output_graph = clusterer.cluster(apply_merging=merge,
                                                    clustering_method='label_propagation')
         
         
         aaaa = output_graph.dismember()
-        # print("aaaa: ",len(aaaa))
         data['clusters'] = data[ID_COLUMN].map(lambda id__: id2label[id__])
         return data
