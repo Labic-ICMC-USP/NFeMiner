@@ -13,7 +13,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.preprocessing import Normalizer
 from sklearn.pipeline import make_pipeline
 
-class NFeModelCreator:
+class NFeMinerModelCreator:
     """
     NFeModelCreator is a class designed to build multiple text-based models for product description data.
     
@@ -566,7 +566,6 @@ class NFeMinerGTINEstimator:
                 .rename(columns={0: 'count'})            # ensure count column name (depending on pandas version)
                 .sort_values(by='similarity', ascending=False)  # sort by similarity
             )
-    
 
 if __name__ == "__main__":
     # Path to feather dataset file
@@ -588,7 +587,7 @@ if __name__ == "__main__":
     print(df.head(2))
 
     # Instantiate the model creator with extracted data
-    model_creator = NFeModelCreator(data=df)
+    model_creator = NFeMinerModelCreator(data=df)
 
     # Configure pandas display options for easier reading
     pd.set_option('display.max_columns', None)

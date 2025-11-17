@@ -1,4 +1,4 @@
-from .enrichment import NFeMinerBaseGenerateModel, NFeMinerJSONValidator
+from .enrichment import NFeMinerBaseGenerateModel
 from .elasticsearch import NFeMinerElasticSearch
 from .classification import NFeMinerGTINEstimator, NFeModelCreator
 from .clustering import NFeCluster
@@ -202,9 +202,6 @@ class NFeMiner:
 
         Returns:
             List[dict]: List of dictionaries containing GTIN classification results.
-
-        Notes:
-            - Adjust GPU parameters, thread count, and classification threshold as needed.
         """
         import pandas as pd
 
@@ -216,18 +213,14 @@ class NFeMiner:
         try:
             NFeModelCreator(data=training)
         except Exception as e:
-            print('Erro na criação do modelo')
-            return []
+            raise Exception(f"The model couldn't be create!!\n\n{str(e)}")
 
         # Classify unlabeled descriptions
         try:
             estimator = NFeMinerGTINEstimator(batch=unlabeled)
+            return estimator.results['gtin'].tolist()
         except Exception as e:
-            print('Erro na classificação')
-            return []
-
-        # Return results
-        return estimator.results['gtin'].tolist()
+            raise Exception(f"The model couldn't be create!!\n\n{str(e)}")
 
     def clustering(self, descriptions: List[str]) -> dict:
         """
