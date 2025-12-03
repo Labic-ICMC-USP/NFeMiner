@@ -37,7 +37,7 @@ class NFeMinerModelCreator:
                  trusted_records: int = 100, 
                  vectorizer: str = 'TFIDF_CHAR_NGRAM',
                  embedding: str = 'SBERT',
-
+                 basedir='./'
         ):
         """
         Initialize the model creator with dataset, vectorizer, and embedding options.
@@ -58,6 +58,7 @@ class NFeMinerModelCreator:
         # Store input dataset and trusted records threshold in instance variables
         self.dataset = data
         self.trusted_records = trusted_records
+        self.basedir = f'{basedir}/models'
 
         # Predefine multiple vectorizer configurations for text feature extraction
         self.vectorizer_configs = {
@@ -112,7 +113,7 @@ class NFeMinerModelCreator:
         The result is saved as a pickle file mapping unique descriptions to their GTIN.
         """
         
-        print('Creating String Match model...')
+        print('Creating String Match model...', flush=True)
         
         # Group dataset by GTIN and 'original' description, counting occurrences
         data_count = (
@@ -149,7 +150,7 @@ class NFeMinerModelCreator:
         path_file = self.create_file_path(filename='model_string_match.pkl')
         with open(path_file, 'wb') as f:
             pickle.dump(model, f)
-        print('String Match model saved.\n\n')
+        print('String Match model saved.\n\n', flush=True)
 
     def create_vectorizer_tensors_model(self):
         """
@@ -188,7 +189,7 @@ class NFeMinerModelCreator:
         print('Vectorizer model saved.\n\n')
 
         # Convert sparse matrix to dense numpy array
-        print('Creating tensor model for 1-NN classification...')
+        print('Creating tensor model for 1-NN classification...', flush=True)
         array_vectors = model_knn.toarray()
 
         # Convert each numpy vector to a PyTorch tensor of float32 dtype
@@ -206,7 +207,7 @@ class NFeMinerModelCreator:
         path_file = self.create_file_path(filename='model_1_NN.pkl')
         with open(path_file, 'wb') as f:
             pickle.dump(df_vectors, f)
-        print('Tensor model for 1-NN classification saved.\n\n')
+        print('Tensor model for 1-NN classification saved.\n\n', flush=True)
 
     def create_embedding_tensors_model(self):
         """
@@ -232,7 +233,7 @@ class NFeMinerModelCreator:
         )
 
         # Print status
-        print('Creating embedding model...')
+        print('Creating embedding model...', flush=True)
 
         # Encode descriptions as tensor embeddings using the selected embedding model
         embedded = self.embedding.encode(
@@ -252,7 +253,7 @@ class NFeMinerModelCreator:
         path_file = self.create_file_path(filename='model_embedding.pkl')
         with open(path_file, 'wb') as f:
             pickle.dump(df_vectors, f)
-        print('Embedding tensor model saved.\n\n')
+        print('Embedding tensor model saved.\n\n', flush=True)
 
     def get_unique_descriptions(self, row, all_data) -> set:
         """
@@ -281,7 +282,7 @@ class NFeMinerModelCreator:
         # Return only descriptions unique to current GTIN (difference set)
         return current_set - combined_others
 
-    def create_file_path(self, dir: str = 'models', filename: str = 'filename.pickle') -> str:
+    def create_file_path(self, filename: str = 'filename.pickle') -> str:
         """
         Helper function to create directory and file path for saving models.
         
@@ -293,10 +294,10 @@ class NFeMinerModelCreator:
             str: Full file path to save the model.
         """
         # Create directory if it doesn't exist
-        os.makedirs(dir, exist_ok=True)
+        os.makedirs(self.basedir, exist_ok=True)
 
         # Construct and return full path string
-        return os.path.join(dir, filename)
+        return os.path.join(self.basedir, filename)
 
 class NFeMinerGTINEstimator:
     """
@@ -310,7 +311,8 @@ class NFeMinerGTINEstimator:
                  n_threads: int = 0,
                  force_cpu: bool = False,
                  min_ngram_confidence: float = 0.5,
-                 min_embedding_confidence: float = 0.4
+                 min_embedding_confidence: float = 0.4,
+                 basedir='./'
         ):
         """
         Initializes the estimator, loads models, and performs classification.
@@ -362,8 +364,6 @@ class NFeMinerGTINEstimator:
 
         # Load SentenceTransformer model for embeddings
         self.model = SentenceTransformer(model).to(self.device)
-
-        basedir = ''
 
         # Load string-matching dictionary model
         try:
@@ -417,7 +417,7 @@ class NFeMinerGTINEstimator:
         self.results.loc[mask, 'description_ref'] = self.results.loc[mask, 'original']
         self.results.loc[mask, 'method'] = 'string_match'
 
-        print('String-Matching: finished')
+        print('String-Matching: finished', flush=True)
 
     def ngram_classifier(self):
         """
@@ -464,7 +464,7 @@ class NFeMinerGTINEstimator:
             self.results.at[global_idx, 'description_ref'] = self.ngram_tensor_ref.at[ref_idx, 'original']
             self.results.at[global_idx, 'method'] = 'n_gram_match'
 
-        print('NGRAM-Match: finished')
+        print('NGRAM-Match: finished', flush=True)
 
 
     def embedding_classifier(self):
@@ -512,7 +512,7 @@ class NFeMinerGTINEstimator:
             self.results.at[global_idx, 'description_ref'] = self.embedding_tensor_ref.at[ref_idx, 'original']
             self.results.at[global_idx, 'method'] = 'embedding_match'
 
-        print('Embedding-Match: finished')
+        print('Embedding-Match: finished', flush=True)
 
     def accuracy_measure(self, mask):
         """

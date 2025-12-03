@@ -1,5 +1,6 @@
 from .enrichment import NFeMinerBaseGenerateModel
 from .elasticsearch import NFeMinerElasticSearch
+from .classification import NFeMinerGTINEstimator, NFeMinerModelCreator
 from .classification import NFeMinerGTINEstimator, NFeModelCreator
 from .clustering import NFeCluster
 from typing import Union, Optional, List, Dict
@@ -211,7 +212,7 @@ class NFeMiner:
         
         # Training Model
         try:
-            NFeModelCreator(data=training)
+            NFeMinerModelCreator(data=training)
         except Exception as e:
             raise Exception(f"The model couldn't be create!!\n\n{str(e)}")
 
