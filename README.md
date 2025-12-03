@@ -1,127 +1,221 @@
 # **NFeMiner – Electronic Invoice Mining**
 
-NFeMiner is a framework for processing and analyzing Electronic Invoices (NF-e). It combines semantic enrichment with Large Language Models (LLMs), graph-based clustering, Global Trade Item Number (GTIN) estimation, and Elasticsearch indexing to enable structured analytical exploration and data visualization through Kibana.
+NFeMiner is a framework for processing and analyzing Electronic Invoices (NF-e). It combines semantic enrichment with Large Language Models (LLMs), graph-based clustering, Global Trade Item Number (GTIN) estimation. The output consists of enriched, structured data that can be indexed in Elasticsearch and visualized through Kibana.
 
-## **Processing Flow in NFeMiner**
+## **NFeMiner Architecture and Processing Flows**
 
-NFeMiner follows a **modular cycle**, where each step receives pre-processed data and generates a structured output for subsequent modules.  
-The general cycle can be divided into the following stages:
+NFeMiner is organized into **five independent modules**, each handling a specific aspect of NF-e normalization, enrichment, clustering, GTIN estimation, and indexing.
+These modules can be used together or independently, depending on the workflow.
+Although the system supports multiple strategies, the processing ultimately follows **two major flows**:
 
----
-
-### **1️⃣ Enrichment and Disambiguation (Module: NFeEnrichment)**
-📥 **Input:**  
-- Raw NF-e documents in JSON format, with sensitive information anonymized.  
-
-🛠 **Process:**  
-- Uses **teacher LLMs** to **correct, standardize, and enrich** product descriptions.  
-- Fills missing fields, harmonizes measurement units, and standardizes terms in descriptions.  
-
-📤 **Output:**  
-- Enriched NF-e documents in structured JSON format.  
-- Refined semantic information, making it easier to compare similar products.  
+1. **Teacher–Student Enrichment Flow** (LLM-based enrichment → local fine-tuning)
+2. **Operational Processing Flow** (local or remote LLMs → enrichment → clustering → GTIN estimation → indexing)
 
 ---
 
-### **2️⃣ Local Model Fine-Tuning (Module: LLMFineTuning)**
-📥 **Input:**  
-- Enriched data from the previous module.  
+### **A. Teacher–Student Enrichment Flow**
 
-🛠 **Process:**  
-- Performs **fine-tuning** of a compact **student LLM** using enriched data.  
-- The student model learns to enrich new NF-e locally, reducing dependence on the teacher LLM.  
+This flow is used when the goal is to **extract high-quality enriched data using powerful “teacher” LLMs**, and then **train compact local “student” models** capable of performing the same enrichment offline.
 
-📤 **Output:**  
-- Locally trained model for efficient processing of new invoices.  
-- Reduced reliance on large, remote LLMs.  
+1. NF-e raw documents are enriched using one of the **Teacher Enrichment Engines**
+   (Ollama, OpenRouter, or Local-LLMs).
+2. The enriched dataset becomes a high-quality corpus.
+3. The **Fine-Tuning Module** trains a smaller local model that replicates the teacher’s output.
+   This model can later be deployed for offline, cost-efficient enrichment.
 
----
-
-### **3️⃣ Graph Construction and Clustering (Modules: NFeClustering + SimilarityGraph)**  
-📥 **Input:**  
-- Enriched and standardized NF-e data.  
-
-🛠 **Process:**  
-- Generates **edges between invoices** using multiple criteria:  
-  - **StringMatchEdgeGenerator** → textual similarity.  
-  - **BERTEmbeddingEdgeGenerator** → semantic similarity with Sentence-BERT.  
-  - **NCMSimilarityEdgeGenerator** → shared NCM code.  
-  - **ValueRangeEdgeGenerator / PriceBandEdgeGenerator** → proximity within numeric value ranges.  
-- Builds a **NetworkX graph** with nodes = NF-e and edges = similarity relations.  
-- Applies **community detection algorithms** (clique, label propagation, modularity, etc.)  
-  to form product clusters.  
-
-📤 **Output:**  
-- **Clusters of “same product”**, labeled and ready for statistical analysis.  
+This flow is ideal for building high-precision, self-contained enrichment pipelines.
 
 ---
 
-### **4️⃣ GTIN Estimation (Module: NFeGtinEstimator)**
-📥 **Input:**  
-- Clustered and enriched invoices.  
+### **B. Operational Processing Flow**
 
-🛠 **Process:**  
-- Filters invoices with valid GTIN and high similarity to create reliable training sets.  
-- Trains a classifier pipeline (string matching → TF-IDF/BoW + 1-NN → SBERT embeddings).  
+This is the end-to-end flow followed in production environments:
 
-📤 **Output:**  
-- Assigns GTINs to missing entries with confidence scores and decision rules.  
+1. NF-e documents (raw or already normalized) are enriched using any available LLM strategy
+   (Ollama, OpenRouter, or local fine-tuned models).
+2. The enriched documents are fed to the **Clustering Module**, which groups invoices that refer to the same underlying product.
+3. The **GTIN Estimation Module** receives invoices with valid and missing GTINs and assigns a GTIN prediction to incomplete entries.
+4. The final dataset (containing enriched descriptions, cluster IDs, and GTIN estimates) is sent to the **Elasticsearch Integration Module** for fast search, analytics, and downstream applications.
 
----
-
-### **5️⃣ Indexing in Elasticsearch (Module: ElasticSearchIndexer)**
-📥 **Input:**  
-- Enriched JSON, cluster labels, and GTIN estimates.  
-
-🛠 **Process:**  
-- Indexes data into **Elasticsearch** for fast and scalable search.  
-- Structures documents for optimized queries across multiple attributes.  
-
-📤 **Output:**  
-- Data ready for exploration in Kibana and analysis via LLM agents.  
+This flow is modular and can be executed with local or remote LLMs, depending on the environment and available compute.
 
 ---
 
-### **6️⃣ Exploration and Visualization (Kibana)**
-📥 **Input:**  
-- Indexed invoices in Elasticsearch.  
+### **Enrichment Module**
 
-🛠 **Process:**  
-- Interactive **dashboards in Kibana** to explore the data.  
-- Visualization of product clusters and price trends.  
+**Classes:**
 
-📤 **Output:**  
-- Graphical interface (Kibana) for detailed analysis of products and average prices.  
+* `NFeMinerOpenRouterModel`
+* `NFeMinerOllamaModel`
+* `NFeMinerLocalModel`
+
+**Input:**
+Raw NF-e documents (JSON), with sensitive fields anonymized.
+
+**Process:**
+
+* Uses an LLM (teacher or local model) to normalize, correct, and enrich product descriptions.
+* Standardizes terminology, harmonizes measurement units, and fills missing fields.
+
+**Output:**
+Structured, enriched NF-e documents with refined semantic and numeric attributes.
 
 ---
 
-## **Summary of Workflow and Main Modules**
+### **Fine-Tuning Module**
 
-1️⃣ **NFeEnrichment** → Enrichment and disambiguation of invoices.  
-2️⃣ **LLMFineTuning** → Fine-tuning of a student LLM for local processing.  
-3️⃣ **NFeClustering + SimilarityGraph** → Graph construction and clustering of similar invoices.  
-4️⃣ **NFeGtinEstimator** → GTIN estimation using ML pipelines.  
-5️⃣ **ElasticSearchIndexer** → Indexing enriched data into Elasticsearch.  
-6️⃣ **ElasticSearchExplorer** → Visual exploration of invoices via Kibana.  
+**Class:**
+
+* `NFeFinetuner`
+
+**Input:**
+
+* Enriched NF-e dataset
+* Base model to be fine-tuned
+
+**Process:**
+
+* Trains a compact local “student” model to replicate the enrichment behavior of a stronger teacher LLM.
+* Produces a reproducible fine-tuned model for efficient offline inference.
+
+**Output:**
+A fine-tuned local model capable of enriching new invoices without external LLM calls.
+
+---
+
+### **Clustering Module**
+
+**Classes:**
+
+* `NFeCluster`
+* `StringMatchEdgeGenerator`
+* `BERTEmbeddingEdgeGenerator`
+* `NCMSimilarityEdgeGenerator`
+* `PriceBandEdgeGenerator`
+* `ValueRangeEdgeGenerator`
+
+**Input:**
+
+* Enriched (or optionally raw) NF-e descriptions
+
+**Process:**
+
+* Computes similarity edges using a defined strategy
+* Builds a similarity graph and applies community-detection algorithms (e.g., Louvain, LPA).
+* Assigns each invoice to a product cluster.
+
+**Output:**
+Cluster labels representing groups of invoices referring to the same underlying product.
+
+---
+
+### **GTIN Estimation Module**
+
+**Classes:**
+
+* `NFeMinerModelCreator`
+* `NFeMinerGTINEstimator`
+
+**Input:**
+
+* Invoices **with GTIN**
+* Invoices **without GTIN**
+* Inputs may be enriched or raw
+
+**Process:**
+
+* Selects high-quality training pairs from invoices with valid GTINs.
+* Uses a hybrid pipeline (string matching → TF-IDF/BOW + 1-NN → SBERT embeddings).
+* Predicts the most likely GTIN for invoices with missing codes.
+
+**Output:**
+GTIN predictions with confidence scores, integrated into the enriched NF-e documents.
+
+---
+
+### **Elasticsearch Integration Module**
+
+**Class:**
+
+* `NFeMinerElasticSearch`
+
+**Input:**
+
+* Final enriched dataset with cluster labels and GTIN predictions
+
+**Process:**
+
+* Creates and manages Elasticsearch indices.
+* Indexes new invoices, updates existing entries, and supports deletions.
+* Offers optimized search operations and analytical queries.
+
+**Output:**
+Search-ready NF-e database accessible for dashboards, analytics, and LLM-based agents.
+
+---
+
+## **Installation**
+
+To install the NFeMiner library, we recommend using **uv**, a fast and modern Python package manager that provides deterministic environments and manages dependencies, ensuring compatibility between NFeMiner and your existing environment.
+
+A typical installation flow with uv looks like this:
+
+```bash
+# Initialize a new project 
+# (if you already have a project, skip this step)
+uv init my-nfeminer-project
+cd my-nfeminer-project
+
+# Add NFeMiner as a dependency (GPU version)
+uv add "./NFeMiner[gpu]"
+
+# Alternatively, install the CPU-only version.
+# Use this if:
+# - you do not need GPU acceleration, OR
+# - the GPU dependencies are already installed, OR
+# - the GPU dependencies caused conflicts in your environment
+uv add "./NFeMiner"
+
+# Install and synchronize all dependencies
+uv sync
+```
+
+### **Alternative Installation Using pip**
+
+You can also install NFeMiner using `pip`.
+
+```bash
+# Install NFeMiner from a local directory (CPU version)
+pip install ./NFeMiner
+
+# Install NFeMiner from a local directory with GPU dependencies
+pip install "./NFeMiner[gpu]"
+```
 
 ---
 
 ## **How to Use**
 
-⚙️ **Optional Requirement – Elasticsearch**  
-If you want to use the indexing and search features, make sure you have **Elasticsearch** installed and running.  
-By default, the library assumes the standard Elasticsearch configuration.  
+The repository [NFeMiner-Docker](https://github.com/Labic-ICMC-USP/NFeMiner-docker/) provides a preconfigured Docker environment that uses the NFeMiner library. This is the easiest and most complete way to run NFeMiner, as it already includes Elasticsearch, Kibana, and a web interface that allows you to upload data, perform LLM-based enrichment, and index the results directly into Elasticsearch.
+
+In addition, the script folder contains more complete example codes demonstrating how to use the NFeMiner modules for [Enrichment](https://github.com/Labic-ICMC-USP/NFeMiner-docker/tree/main/scripts), [Finetuning](https://github.com/Labic-ICMC-USP/NFeMiner-docker/tree/main/scripts), [Classification](https://github.com/Labic-ICMC-USP/NFeMiner-docker/tree/main/scripts), and [Clustering](https://github.com/Labic-ICMC-USP/NFeMiner-docker/tree/main/scripts). These examples can be found in the repository [NFeMiner-Docker in the scripts folder](https://github.com/Labic-ICMC-USP/NFeMiner-docker/tree/main/scripts), specifically in the files prefixed with **job_**.
+
+Below we provide a simple usage example intended only to illustrate the basic use of the functions.
+
+⚙️ **Optional Requirement – Elasticsearch**
+If you want to use the indexing and search features, make sure you have **Elasticsearch** installed and running.
+By default, the library assumes the standard Elasticsearch configuration.
 If your instance does **not** use the default values, configure the following environment variables:
 
-- `ELASTICSEARCH_HOST` (str): Elasticsearch server hostname or IP. Default: `localhost`.  
-- `ELASTICSEARCH_PORT` (int): Elasticsearch server port. Default: `9200`.  
-- `ELASTICSEARCH_SCHEME` (str): Protocol scheme (`http` or `https`). Default: `http`.  
+- `ELASTICSEARCH_HOST` (str): Elasticsearch server hostname or IP. Default: `localhost`.
+- `ELASTICSEARCH_PORT` (int): Elasticsearch server port. Default: `9200`.
+- `ELASTICSEARCH_SCHEME` (str): Protocol scheme (`http` or `https`). Default: `http`.
 
 ---
 
-## **📊 Example Dataset**
+### **📊 Example Dataset**
 
-Use the following data structure to represent invoices.  
+Use the following data structure to represent invoices.
 
 | invoice_id | item_id | ncm_code | gtin_code  | sales_unit | quantity_sold | unit_price | description                 |
 |------------|---------|----------|------------|------------|---------------|------------|-----------------------------|
@@ -130,25 +224,25 @@ Use the following data structure to represent invoices.
 | INV002     | 2       | 04031000 | 7897700025 | l          | 100.0         | 6.90       | Whole milk UHT 1L           |
 
 **Column Descriptions:**
-- `invoice_id (str)` → Unique identifier of the electronic invoice (NFe).  
-- `item_id (str)` → Identifier of the item within the invoice.  
-- `ncm_code (str)` → Mercosur Common Nomenclature (NCM) code for tax classification.  
-- `gtin_code (str)` → Global Trade Item Number (GTIN), e.g., barcode.  
-- `sales_unit (str)` → Unit of measure used for selling the item (e.g., "kg", "pcs").  
-- `quantity_sold (float)` → Quantity of the item sold.  
-- `unit_price (float)` → Price per unit of the item.  
-- `description (str)` → Natural language description of the product.  
+- `invoice_id (str)` → Unique identifier of the electronic invoice (NFe).
+- `item_id (str)` → Identifier of the item within the invoice.
+- `ncm_code (str)` → Mercosur Common Nomenclature (NCM) code for tax classification.
+- `gtin_code (str)` → Global Trade Item Number (GTIN), e.g., barcode.
+- `sales_unit (str)` → Unit of measure used for selling the item (e.g., "kg", "pcs").
+- `quantity_sold (float)` → Quantity of the item sold.
+- `unit_price (float)` → Price per unit of the item.
+- `description (str)` → Natural language description of the product.
 
 ---
 
-## **Example in Python**
+### **Example in Python**
 
 Here is a minimal example of how to use **NFeMiner** in Python:
 
 ```python
 import pandas as pd
 from nfeminer import NFeMiner
-from nfeminer.enrichment import NFeMinerLocalModel, NFeMinerGPTModel
+from nfeminer.enrichment import NFeMinerLocalModel, NFeMinerOpenRouterModel
 
 # ===========================
 # Example dataset (3 invoices)
@@ -195,7 +289,7 @@ df = pd.DataFrame(invoices)
 model = NFeMinerLocalModel()
 
 # Option 2 - GPT-based teacher model
-# model = NFeMinerGPTModel(api_key="your-api-key")
+# model = NFeMinerOpenRouterModel(api_key="your-api-key")
 
 # ===========================
 # Initialize NFeMiner
@@ -231,62 +325,54 @@ print("✅ Dataset enriched and indexed into Elasticsearch (if configured).")
 print("\n🔎 Search results for 'rice':")
 print(nfem.search_string('rice'))
 
-print("\n🔎 Search results for numeric query (quantity_sold = 50.0):")
-print(nfem.search_numeric_term('quantity_sold', 50.0))
+print("\n🔎 Search results for numeric query (quantidade_comercializada = 50.0):")
+print(nfem.search_numeric_term('quantidade_comercializada', 50.0))
 
 # ===========================
 # Step 4 - GTIN Estimation
 # ===========================
 
 # Training data: always use description + gtin_code from the DataFrame
-training_data = df[['description', 'gtin_code']].values.tolist()
+training_data = df[['description', 'gtin_code']]
 
 # Option A - Use descriptions from the DataFrame for classification
-classify_data_df = df['description'].tolist()
-results_df = nfem.gtin_estimator(
-    training_description_gtin=training_data,
-    classify_descriptions=classify_data_df
-)
-
-print("\n📦 GTIN Estimation (classify from DataFrame):")
-print(pd.DataFrame(results_df))
+# unlabeled_data = df['description'].tolist()
 
 # Option B - Use a custom list of descriptions for classification
-custom_descriptions = [
+unlabeled_data = [
     "Organic brown rice 1kg",
     "Sparkling water lemon flavor 500ml",
     "Semi-skimmed milk 1L"
 ]
-results_custom = nfem.gtin_estimator(
-    training_description_gtin=training_data,
-    classify_descriptions=custom_descriptions
+
+results_df = nfem.gtin_estimator(
+    training_description=training_data['description'].tolist(),
+    training_gtin=training_data['gtin_code'].tolist(),
+    classify_descriptions=unlabeled_data
 )
 
-print("\n📦 GTIN Estimation (classify from custom list):")
-print(pd.DataFrame(results_custom))
+print("\n📦 GTIN Estimation (classify):")
+print(pd.DataFrame(results_df))
 
 # ===========================
 # Step 5 - Clustering
 # ===========================
 
-# Option A - Provide a custom list of product descriptions
-custom_descriptions = [
-    "Fresh beef hindquarter",
-    "Beef shoulder",
-    "Beef chops",
-    "Long-grain rice",
-    "Whole milk UHT 1L",
-    "Sparkling water 500ml"
-]
+# Option A - Use descriptions from the DataFrame
+descriptions = df['description'].tolist()
+index = df.index.tolist()
 
-clusters_custom = nfem.clustering(custom_descriptions)
+# Option B - Provide a custom list of product descriptions based on the enriched and indexed data
+# results_search = nfem.search_string('rice')
+# hits = results_search.get("hits", [])
+# index = []
+# descriptions = []
+# for doc in hits:
+#     index.append(doc["_id"])
+#     enriched = doc.get("descricao", {}).get("enriquecida", {}).get("produto_detalhado")
+#     descriptions.append(enriched)
+
+clusters_custom = nfem.clustering(descriptions, index)
 print("\n🧩 Clustering result (manual list):")
 print(pd.DataFrame(clusters_custom))
-
-# Option B - Use the 'description' column from the dataset (DataFrame)
-df_descriptions = df['description'].tolist()
-clusters_df = nfem.clustering(df_descriptions)
-
-print("\n🧩 Clustering result (from DataFrame column):")
-print(pd.DataFrame(clusters_df))
 ```

@@ -71,9 +71,10 @@
            <div itemprop="articleBody">
              
   <h1>Source code for nfeminer</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">.enrichment</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerBaseGenerateModel</span><span class="p">,</span> <span class="n">NFeMinerJSONValidator</span>
+<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">.enrichment</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerBaseGenerateModel</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.elasticsearch</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerElasticSearch</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.classification</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">,</span> <span class="n">NFeModelCreator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.classification</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">,</span> <span class="n">NFeMinerModelCreator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.similarity_graph</span><span class="w"> </span><span class="kn">import</span> <span class="n">StringMatchEdgeGenerator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.clustering</span><span class="w"> </span><span class="kn">import</span> <span class="n">NFeCluster</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Dict</span>
 
@@ -280,18 +281,18 @@
 
 <div class="viewcode-block" id="NFeMiner.gtin_estimator">
 <a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.gtin_estimator">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">gtin_estimator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">training_description_gtin</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">classify_descriptions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">gtin_estimator</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">training_description</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">training_gtin</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">classify_descriptions</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">dict</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Predict GTIN values for multiple product descriptions.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            training_description_gtin (list[list[str]]):</span>
-<span class="sd">                List of training pairs [description, gtin] used to train the model.</span>
-<span class="sd">                Example:</span>
-<span class="sd">                    training_description_gtin = [</span>
-<span class="sd">                        [&#39;Carne bovina&#39;, &#39;465465&#39;],</span>
-<span class="sd">                        [&#39;Carne porco&#39;, &#39;4654564&#39;]</span>
-<span class="sd">                    ]</span>
+<span class="sd">            training_description (list[str]):</span>
+<span class="sd">                List of training descriptions used to train the model.</span>
+<span class="sd">                Example: training_description_gtin = [&#39;Carne bovina&#39;,&#39;Carne porco&#39;]</span>
+
+<span class="sd">            training_gtin (list[str]):</span>
+<span class="sd">                List of training gtin used to train the model.</span>
+<span class="sd">                Example: training_gtin = [&#39;465465&#39;,&#39;4654564&#39;]</span>
 
 <span class="sd">            classify_descriptions (list[str]):</span>
 <span class="sd">                List of unlabeled product descriptions for classification.</span>
@@ -300,57 +301,64 @@
 
 <span class="sd">        Returns:</span>
 <span class="sd">            List[dict]: List of dictionaries containing GTIN classification results.</span>
-
-<span class="sd">        Notes:</span>
-<span class="sd">            - Adjust GPU parameters, thread count, and classification threshold as needed.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 
         <span class="c1"># Dataframes</span>
-        <span class="n">training</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">training_description_gtin</span><span class="p">,</span> <span class="n">columns</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;original&#39;</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">])</span>
+        <span class="n">training</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;original&#39;</span><span class="p">:</span> <span class="n">training_description</span><span class="p">,</span> <span class="s1">&#39;gtin&#39;</span><span class="p">:</span> <span class="n">training_gtin</span><span class="p">})</span>
         <span class="n">unlabeled</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s1">&#39;original&#39;</span><span class="p">:</span> <span class="n">classify_descriptions</span><span class="p">,</span><span class="s1">&#39;gtin&#39;</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">NA</span><span class="p">})</span>
         
         <span class="c1"># Training Model</span>
         <span class="k">try</span><span class="p">:</span>
-            <span class="n">NFeModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
+            <span class="n">NFeMinerModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">training</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Erro na criação do modelo&#39;</span><span class="p">)</span>
-            <span class="k">return</span> <span class="p">[]</span>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The model couldn&#39;t be create!!</span><span class="se">\n\n</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 
         <span class="c1"># Classify unlabeled descriptions</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">estimator</span> <span class="o">=</span> <span class="n">NFeMinerGTINEstimator</span><span class="p">(</span><span class="n">batch</span><span class="o">=</span><span class="n">unlabeled</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Erro na classificação&#39;</span><span class="p">)</span>
-            <span class="k">return</span> <span class="p">[]</span>
-
-        <span class="c1"># Return results</span>
-        <span class="k">return</span> <span class="n">estimator</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span></div>
+            <span class="k">raise</span> <span class="ne">Exception</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;The model couldn&#39;t be create!!</span><span class="se">\n\n</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="NFeMiner.clustering">
 <a class="viewcode-back" href="../nfeminer.html#nfeminer.NFeMiner.clustering">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">clustering</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">descriptions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">clustering</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">descriptions</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">index</span><span class="p">:</span> <span class="n">List</span><span class="p">,</span> <span class="n">tmp_files_path</span><span class="o">=</span><span class="s2">&quot;./&quot;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Clusters product descriptions using semantic similarity.</span>
+<span class="sd">        Clusters product descriptions based on semantic similarity using a graph-based</span>
+<span class="sd">        community detection algorithm.</span>
+
+<span class="sd">        This method constructs a similarity graph from the provided descriptions using</span>
+<span class="sd">        `StringMatchEdgeGenerator`, applies a graph clustering via `NFeCluster`,</span>
+<span class="sd">        and returns the expanded cluster assignments mapped to the original IDs.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            descriptions (List[str]): List of product descriptions.</span>
+<span class="sd">            descriptions (List[str]):</span>
+<span class="sd">                List of product descriptions.</span>
+<span class="sd">            index (List):</span>
+<span class="sd">                List of original IDs associated with each description. Must be the same</span>
+<span class="sd">                length as `descriptions`. These IDs are used to expand cluster labels</span>
+<span class="sd">                back to the full dataset.</span>
+<span class="sd">            tmp_files_path (str, optional):</span>
+<span class="sd">                Directory where LMDB cache files will be stored. Defaults to `&quot;./&quot;`.</span>
+<span class="sd">                The caching mechanism enables large-scale pairwise similarity computation</span>
+<span class="sd">                using limited memory.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            label2descs (dict[int,list[str]]): Dictionary mapping cluster labels to grouped descriptions.</span>
+<span class="sd">            dict[int, list[str]]:</span>
+<span class="sd">                A dictionary mapping each cluster label (int) to the list of product</span>
+<span class="sd">                descriptions assigned to that cluster.</span>
+
+<span class="sd">        Notes:</span>
+<span class="sd">            - Similarity is computed using `difflib.SequenceMatcher` via</span>
+<span class="sd">            `StringMatchEdgeGenerator`.</span>
+<span class="sd">            - Clustering is performed using the Louvain community detection algorithm.</span>
+<span class="sd">            - Similarity values are stored with dtype `float16` to reduce memory usage.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">nfc</span> <span class="o">=</span> <span class="n">NFeCluster</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">descriptions</span><span class="p">)</span>
-        <span class="n">only_labels</span><span class="p">,</span> <span class="n">clusterized</span> <span class="o">=</span> <span class="n">nfc</span><span class="o">.</span><span class="n">cluster</span><span class="p">()</span>
-        
-        <span class="n">label2descs</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="k">for</span> <span class="n">desc</span><span class="p">,</span><span class="n">label</span> <span class="ow">in</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span><span class="n">only_labels</span><span class="p">)):</span>
-            <span class="n">label</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">label</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">label2descs</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-                <span class="n">label2descs</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">desc</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">label2descs</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">desc</span><span class="p">,]</span>
-        <span class="k">return</span> <span class="n">label2descs</span></div>
+        <span class="n">gen</span> <span class="o">=</span> <span class="n">StringMatchEdgeGenerator</span><span class="p">(</span><span class="n">descriptions</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="n">tmp_files_path</span><span class="p">,</span> <span class="n">similarity_dtype</span><span class="o">=</span><span class="s2">&quot;float16&quot;</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
+        <span class="n">expanded</span> <span class="o">=</span> <span class="n">NFeCluster</span><span class="p">(</span><span class="n">gen</span><span class="p">,</span> <span class="n">threshold</span><span class="o">=</span><span class="mf">0.95</span><span class="p">)</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="s2">&quot;louvain&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expanded</span></div>
 </div>
 
 </pre></div>

@@ -72,998 +72,215 @@
            <div itemprop="articleBody">
              
   <h1>Source code for nfeminer.clustering</h1><div class="highlight"><pre>
-<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">networkx</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nx</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">collections</span><span class="w"> </span><span class="kn">import</span> <span class="n">Counter</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">itertools</span><span class="w"> </span><span class="kn">import</span> <span class="n">chain</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.similarity_graph</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
-
-<span class="c1">## community_algorithms:</span>
-
-<span class="kn">from</span><span class="w"> </span><span class="nn">networkx.algorithms.community</span><span class="w"> </span><span class="kn">import</span> <span class="n">girvan_newman</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">networkx.algorithms.community</span><span class="w"> </span><span class="kn">import</span> <span class="n">asyn_lpa_communities</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">networkx.algorithms.community</span><span class="w"> </span><span class="kn">import</span> <span class="n">greedy_modularity_communities</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">networkx.algorithms.community</span><span class="w"> </span><span class="kn">import</span> <span class="n">k_clique_communities</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">networkx.algorithms.community</span><span class="w"> </span><span class="kn">import</span> <span class="n">kernighan_lin_bisection</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">types</span><span class="w"> </span><span class="kn">import</span> <span class="n">SimpleNamespace</span>
-
-<div class="viewcode-block" id="direct_nearest_neighbors">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.direct_nearest_neighbors">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">direct_nearest_neighbors</span><span class="p">(</span><span class="n">G</span><span class="p">:</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">,</span>
-                             <span class="n">node_id</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
-                             <span class="n">k</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-                             <span class="n">weight</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                             <span class="n">maximize</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return the direct k nearest neighbors of a node using an edge attribute.</span>
-
-<span class="sd">    For each neighbor of `node_id`, this function reads the edge attribute</span>
-<span class="sd">    named by `weight` and uses it as the similarity/score. If the attribute</span>
-<span class="sd">    is missing on an edge, `float(&quot;inf&quot;)` is used as a fallback (which means</span>
-<span class="sd">    that when `maximize` is False such neighbors will appear last; when</span>
-<span class="sd">    `maximize` is True they may appear first).</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        G (nx.Graph): Graph containing the node and edges.</span>
-<span class="sd">        node_id: Identifier of the node whose neighbors are queried.</span>
-<span class="sd">        k (int): Number of neighbors to return (top-k).</span>
-<span class="sd">        weight (str | None): Edge attribute name used as the score. If None,</span>
-<span class="sd">            the code will try to `get(None)` and fall back to `inf` for missing values.</span>
-<span class="sd">        maximize (bool): If True, larger scores are considered better (sort</span>
-<span class="sd">            in descending order). If False, smaller scores are considered</span>
-<span class="sd">            better (ascending order).</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        List[Tuple[Any, float]]: List of (neighbor_id, score) for the top-k neighbors.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">neighbors</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">neighbor</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">neighbors</span><span class="p">(</span><span class="n">node_id</span><span class="p">):</span>
-        <span class="n">edge_data</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">get_edge_data</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="n">neighbor</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
-        <span class="n">sim</span> <span class="o">=</span> <span class="n">edge_data</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">weight</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;inf&quot;</span><span class="p">))</span>
-        <span class="n">neighbors</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">neighbor</span><span class="p">,</span> <span class="n">sim</span><span class="p">))</span>
-    <span class="n">neighbors</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="n">maximize</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">neighbors</span><span class="p">[:</span><span class="n">k</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="semi_supervised_label_propagation">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.semi_supervised_label_propagation">[docs]</a>
-<span class="k">def</span><span class="w"> </span><span class="nf">semi_supervised_label_propagation</span><span class="p">(</span><span class="n">G</span><span class="p">:</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">,</span>
-                                      <span class="n">initial_labels</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">],</span>
-                                      <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span>
-                                      <span class="n">tol</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1e-3</span><span class="p">,</span>
-                                      <span class="n">seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                                      <span class="n">UNKOWN_LABEL</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
-                                      <span class="n">inertia</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Perform semi-supervised label propagation on a graph.</span>
-
-<span class="sd">    This function propagates labels from a set of initially labeled nodes to</span>
-<span class="sd">    the rest of the nodes using a simple iterative weighted-vote scheme.</span>
-<span class="sd">    At each iteration nodes are visited in random order and adopt the label</span>
-<span class="sd">    that maximizes the sum of neighbor weights for each label. Previously</span>
-<span class="sd">    fixed (initial) labels are never changed. Optionally, an inertia term</span>
-<span class="sd">    biases nodes toward their current label.</span>
-
-<span class="sd">    The method stops when either the maximum number of iterations is reached</span>
-<span class="sd">    or when the relative fraction of changed labels in an iteration is below</span>
-<span class="sd">    `tol`.</span>
-
-<span class="sd">    Args:</span>
-<span class="sd">        G (nx.Graph): Input graph. Edge weights are read from the</span>
-<span class="sd">            `&#39;weight&#39;` attribute; when absent weight defaults to 1.0.</span>
-<span class="sd">        initial_labels (Dict[Any, Any]): Mapping {node: label} of nodes that</span>
-<span class="sd">            are fixed / known at the start (these labels are not modified).</span>
-<span class="sd">        max_iter (int): Maximum number of propagation iterations. Default: 100.</span>
-<span class="sd">        tol (float): Convergence tolerance. If (changes / n_nodes) &lt; tol the</span>
-<span class="sd">            algorithm stops early. Default: 1e-3.</span>
-<span class="sd">        seed (int | None): Seed for the internal random generator used to</span>
-<span class="sd">            shuffle node visit order and to break ties. Default: None.</span>
-<span class="sd">        UNKOWN_LABEL: Value that represents the unknown/unlabeled state.</span>
-<span class="sd">            Default: -1. (Note: parameter name kept as in original.)</span>
-<span class="sd">        inertia (float): Value in [0, 1] that biases a node toward keeping</span>
-<span class="sd">            its current label. The current label&#39;s weight is combined as</span>
-<span class="sd">            `(1 - inertia) * neighbor_weight + inertia`. Default: 0.5.</span>
-
-<span class="sd">    Returns:</span>
-<span class="sd">        Dict[Any, Any]: Mapping {node: label} with propagated labels for all nodes.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">rng</span> <span class="o">=</span> <span class="n">random</span><span class="o">.</span><span class="n">Random</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
-    <span class="n">labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">node</span><span class="p">:</span> <span class="n">UNKOWN_LABEL</span> <span class="k">for</span> <span class="n">node</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">()}</span>
-    <span class="n">labels</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">initial_labels</span><span class="p">)</span>
-    <span class="n">fixed</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">initial_labels</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
-    <span class="n">n</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">number_of_nodes</span><span class="p">()</span>
-    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
-        <span class="n">changes</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="n">nodes</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">())</span>
-        <span class="n">rng</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">nodes</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">u</span> <span class="ow">in</span> <span class="n">nodes</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">u</span> <span class="ow">in</span> <span class="n">fixed</span><span class="p">:</span>
-                <span class="k">continue</span>
-            <span class="n">weights</span> <span class="o">=</span> <span class="n">Counter</span><span class="p">()</span>
-            <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">neighbors</span><span class="p">(</span><span class="n">u</span><span class="p">):</span>
-                <span class="n">lbl</span> <span class="o">=</span> <span class="n">labels</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">lbl</span> <span class="o">==</span> <span class="n">UNKOWN_LABEL</span><span class="p">:</span>
-                    <span class="k">continue</span>
-                <span class="n">w</span> <span class="o">=</span> <span class="n">G</span><span class="p">[</span><span class="n">u</span><span class="p">][</span><span class="n">v</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;weight&#39;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
-                <span class="n">weights</span><span class="p">[</span><span class="n">lbl</span><span class="p">]</span> <span class="o">+=</span> <span class="n">w</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">weights</span><span class="p">:</span>
-                <span class="k">continue</span>
-            <span class="n">current</span> <span class="o">=</span> <span class="n">labels</span><span class="p">[</span><span class="n">u</span><span class="p">]</span>
-            <span class="k">if</span> <span class="n">current</span> <span class="o">!=</span> <span class="n">UNKOWN_LABEL</span><span class="p">:</span>
-                <span class="n">weights</span><span class="p">[</span><span class="n">current</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">inertia</span><span class="p">)</span> <span class="o">*</span> <span class="n">weights</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">current</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="n">inertia</span>
-            <span class="n">max_w</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">weights</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-            <span class="n">best</span> <span class="o">=</span> <span class="p">[</span><span class="n">lbl</span> <span class="k">for</span> <span class="n">lbl</span><span class="p">,</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">weights</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">w</span> <span class="o">==</span> <span class="n">max_w</span><span class="p">]</span>
-            <span class="n">new_lbl</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">best</span><span class="p">)</span>
-            <span class="k">if</span> <span class="n">labels</span><span class="p">[</span><span class="n">u</span><span class="p">]</span> <span class="o">!=</span> <span class="n">new_lbl</span><span class="p">:</span>
-                <span class="n">labels</span><span class="p">[</span><span class="n">u</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_lbl</span>
-                <span class="n">changes</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="k">if</span> <span class="n">changes</span> <span class="o">/</span> <span class="n">n</span> <span class="o">&lt;</span> <span class="n">tol</span><span class="p">:</span>
-            <span class="k">break</span>
-    <span class="k">return</span> <span class="n">labels</span></div>
-
-
-<div class="viewcode-block" id="CGraph">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">CGraph</span><span class="p">():</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">G</span><span class="p">:</span> <span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize a CGraph.</span>
-
-<span class="sd">        This class wraps a NetworkX graph and manages node labels and</span>
-<span class="sd">        multiple label sets produced by clustering operations.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            G (nx.Graph): Similarity graph to wrap.</span>
-<span class="sd">            name (str, optional): Optional graph name.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">G</span> <span class="o">=</span> <span class="n">G</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">multilabels</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># stores multiple sets of labels</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="mi">0</span>
-
-        <span class="c1"># Ensure nodes have a &#39;label&#39; attribute; if none of the nodes have it,</span>
-        <span class="c1"># initialize all node labels to -1.</span>
-        <span class="n">has_labels</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">():</span>
-            <span class="k">if</span> <span class="s1">&#39;label&#39;</span> <span class="ow">in</span> <span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">node_id</span><span class="p">]:</span>
-                <span class="n">has_labels</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">break</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="n">has_labels</span><span class="p">:</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="s2">&quot;label&quot;</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="fm">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return number of nodes in the wrapped graph.&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="fm">__getitem__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return node attribute dict for node `index` (delegates to nx).&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
-
-<div class="viewcode-block" id="CGraph.copy">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.copy">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">copy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a deep copy of this CGraph.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            data (bool): If True, copy node attributes into the new graph.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: A deep-copied CGraph instance.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">graph</span> <span class="o">=</span> <span class="n">CGraph</span><span class="p">(</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">))</span>
-        <span class="k">if</span> <span class="n">data</span><span class="p">:</span>
-            <span class="n">node_attrs</span> <span class="o">=</span> <span class="p">{</span><span class="n">n</span><span class="p">:</span> <span class="n">d</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">)}</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">node_attrs</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">graph</span></div>
-
-
-    <span class="nd">@property</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">labels</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a mapping {node_id: label} from the wrapped graph.&quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">nx</span><span class="o">.</span><span class="n">get_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-
-<div class="viewcode-block" id="CGraph.nodes">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.nodes">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nodes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the nodes view of the wrapped graph.</span>
-
-<span class="sd">        Accepts the same keyword arguments as `networkx.Graph.nodes(...)`.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            NodeView: NetworkX nodes view (possibly filtered by kwargs).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="CGraph.degree">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.degree">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">degree</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the degree or degree view for a node or nodes.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            index: Node or collection of nodes (same semantics as networkx).</span>
-<span class="sd">            **kwargs: Extra keyword arguments forwarded to `self.G.degree`.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            int or DegreeView: Degree count or view depending on index.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">degree</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="CGraph.subgraph">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.subgraph">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">subgraph</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nodes</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a CGraph wrapping the subgraph induced by `nodes`.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            nodes (iterable): Iterable of node IDs to induce the subgraph.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: New CGraph wrapping the induced subgraph.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">CGraph</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">subgraph</span><span class="p">(</span><span class="n">nodes</span><span class="p">))</span></div>
-
-
-<div class="viewcode-block" id="CGraph.nxcluster">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.nxcluster">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">nxcluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply a NetworkX clustering/community detection method to self.G.</span>
-
-<span class="sd">        The `method` specifies which NetworkX community algorithm to run and</span>
-<span class="sd">        `params` are forwarded to the chosen function.</span>
-
-<span class="sd">        Supported methods and the NetworkX functions they use:</span>
-<span class="sd">            - &quot;label_propagation&quot;: asyn_lpa_communities(self.G, **params)</span>
-<span class="sd">                params: weight (str | None), seed (int | None)</span>
-<span class="sd">            - &quot;girvan_newman&quot;: girvan_newman(self.G, **params)</span>
-<span class="sd">                params: most_valuable_edge (callable | None)</span>
-<span class="sd">            - &quot;bisection&quot;: kernighan_lin_bisection(self.G, **params)</span>
-<span class="sd">                params: partition (tuple[list, list] | None), max_iter (int), weight (str), seed (int)</span>
-<span class="sd">            - &quot;clique&quot;: k_clique_communities(self.G, **params)</span>
-<span class="sd">                params: k (int)</span>
-<span class="sd">            - &quot;greedy&quot;: greedy_modularity_communities(self.G, **params)</span>
-<span class="sd">                params: weight (str | None)</span>
-
-<span class="sd">        After computing communities, this method:</span>
-<span class="sd">            * Converts communities into a dict {label: [nodes...]}</span>
-<span class="sd">            * Sets node attribute &#39;label&#39; for nodes according to the detected community</span>
-<span class="sd">            * Appends the labels dict into self.multilabels</span>
-<span class="sd">            * Updates self.next_label to the next available label id</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            method (str): Name of the clustering method to use.</span>
-<span class="sd">            **params: Parameters forwarded to the chosen NetworkX function.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            dict[int, list]: Mapping cluster_label -&gt; list of node IDs.</span>
-
-<span class="sd">        Raises:</span>
-<span class="sd">            ValueError: If the method name is not supported.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;label_propagation&#39;</span><span class="p">:</span>
-            <span class="n">communities</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">asyn_lpa_communities</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;girvan_newman&#39;</span><span class="p">:</span>
-            <span class="n">communities</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">girvan_newman</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;bisection&#39;</span><span class="p">:</span>
-            <span class="n">communities</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">kernighan_lin_bisection</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;clique&#39;</span><span class="p">:</span>
-            <span class="n">communities</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">k_clique_communities</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;greedy&#39;</span><span class="p">:</span>
-            <span class="n">communities</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">greedy_modularity_communities</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">))</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Method [</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">] not allowed&quot;</span><span class="p">)</span>
-
-        <span class="n">labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">nodelist</span><span class="p">)</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">nodelist</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">communities</span><span class="p">)}</span>
-        <span class="n">nodelabels</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="mi">0</span>
-        <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">nodelist</span> <span class="ow">in</span> <span class="n">labels</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">for</span> <span class="n">nodeid</span> <span class="ow">in</span> <span class="n">nodelist</span><span class="p">:</span>
-                <span class="n">nodelabels</span><span class="p">[</span><span class="n">nodeid</span><span class="p">]</span> <span class="o">=</span> <span class="n">label</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">next_label</span><span class="p">,</span> <span class="n">label</span><span class="p">)</span>  <span class="c1"># highest label from clustering</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">+=</span> <span class="mi">1</span>  <span class="c1"># set to next available label</span>
-        <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">nodelabels</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">multilabels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">labels</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">labels</span></div>
-
-
-<div class="viewcode-block" id="CGraph.sscluster">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.sscluster">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">sscluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">params</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply a semi-supervised clustering/label-propagation method.</span>
-
-<span class="sd">        Supported `method` values:</span>
-<span class="sd">            - &quot;label_propagation&quot;: uses existing node labels in the graph as</span>
-<span class="sd">              initial labeled nodes and runs a semi-supervised label propagation.</span>
-
-<span class="sd">        For &#39;label_propagation&#39;, the graph&#39;s node labels are read (labels != -1</span>
-<span class="sd">        are treated as ground truth). The result mapping {node: label} is set</span>
-<span class="sd">        as the node attribute &#39;label&#39; and appended to self.multilabels.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            method (str): Name of the semi-supervised method to run.</span>
-<span class="sd">            **params: Parameters for the chosen semi-supervised algorithm.</span>
-
-<span class="sd">        Raises:</span>
-<span class="sd">            ValueError: If the method name is not supported.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;label_propagation&#39;</span><span class="p">:</span>
-            <span class="n">init</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">get_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-            <span class="n">initial_labels</span> <span class="o">=</span> <span class="p">{</span><span class="n">node</span><span class="p">:</span> <span class="n">lab</span> <span class="k">for</span> <span class="n">node</span><span class="p">,</span> <span class="n">lab</span> <span class="ow">in</span> <span class="n">init</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">lab</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">}</span>
-            <span class="n">result</span> <span class="o">=</span> <span class="n">semi_supervised_label_propagation</span><span class="p">(</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">initial_labels</span><span class="p">,</span>
-                <span class="n">max_iter</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;max_iter&#39;</span><span class="p">,</span> <span class="mi">100</span><span class="p">),</span>
-                <span class="n">tol</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;tol&#39;</span><span class="p">,</span> <span class="mf">1e-3</span><span class="p">),</span>
-                <span class="n">seed</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;seed&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
-                <span class="n">inertia</span><span class="o">=</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;inertia&#39;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)</span>
-            <span class="p">)</span>
-            <span class="c1"># Update node attributes and multilabels</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">result</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">multilabels</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">result</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;SS method [</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">] not allowed&quot;</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="CGraph.core">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.core">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">core</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">topk</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degree&#39;</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">return_scores</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Select the most representative nodes according to a centrality/core metric.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            topk (int | None): Number of top nodes to return. If None, return all nodes ordered.</span>
-<span class="sd">            method (str): Centrality method. One of:</span>
-<span class="sd">                &#39;degree&#39;, &#39;betweenness&#39;, &#39;closeness&#39;, &#39;eigenvector&#39;, &#39;pagerank&#39;, &#39;corenumber&#39;</span>
-<span class="sd">            weight (str | None): Edge attribute to use as weight. Default is None.</span>
-<span class="sd">            return_scores (bool): If True, returns a list of (node_id, score) tuples.</span>
-<span class="sd">                                  If False, returns only node IDs.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            list: If return_scores is False: list[node_id]. If True: list[(node_id, score)].</span>
-
-<span class="sd">        Raises:</span>
-<span class="sd">            ValueError: If the method is not supported or incompatible with weight.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;degree&#39;</span><span class="p">:</span>
-            <span class="c1"># representatives = nx.degree_centrality(self.G)</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">degree</span><span class="p">(</span><span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;betweenness&#39;</span><span class="p">:</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">betweenness_centrality</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">normalized</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;closeness&#39;</span><span class="p">:</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">closeness_centrality</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">distance</span><span class="o">=</span><span class="n">weight</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;eigenvector&#39;</span><span class="p">:</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">eigenvector_centrality</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">1000</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;pagerank&#39;</span><span class="p">:</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">pagerank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.85</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;corenumber&#39;</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">weight</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;core number is not supported with weight!=None. weight = [</span><span class="si">{</span><span class="n">weight</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">)</span>
-            <span class="n">representatives</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">core_number</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Method [</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">] not allowed&quot;</span><span class="p">)</span>
-
-        <span class="n">sorted_items</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">representatives</span><span class="o">.</span><span class="n">items</span><span class="p">(),</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">x</span><span class="p">:</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">reverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)[:</span><span class="n">topk</span><span class="p">]</span>
-        <span class="k">if</span> <span class="n">return_scores</span><span class="p">:</span>
-            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">sorted_items</span><span class="p">)</span>
-        <span class="k">return</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">sorted_items</span><span class="p">]</span></div>
-
-
-<div class="viewcode-block" id="CGraph.dismember">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.dismember">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">dismember</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Split the graph into multiple CGraph objects grouped by current node labels.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            dict[label, CGraph]: Mapping each label to a CGraph containing the nodes</span>
-<span class="sd">                                 that currently have that label.</span>
-
-<span class="sd">        Notes:</span>
-<span class="sd">            - Restores the original &#39;label&#39; attributes on the main graph (no change).</span>
-<span class="sd">            - Updates self.next_label to the maximum found label.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">labels</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">get_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-        <span class="n">label2nodes</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c1"># map label -&gt; list[node_id]</span>
-        <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">labels</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-            <span class="k">if</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">label2nodes</span><span class="p">:</span>
-                <span class="n">label2nodes</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node_id</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">label2nodes</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">node_id</span><span class="p">]</span>
-        <span class="n">label2cgraph</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="n">CGraph</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">subgraph</span><span class="p">(</span><span class="n">node_list</span><span class="p">))</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">node_list</span> <span class="ow">in</span> <span class="n">label2nodes</span><span class="o">.</span><span class="n">items</span><span class="p">()}</span>
-        <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>  <span class="c1"># restore the labels to the graph</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">label2cgraph</span><span class="o">.</span><span class="n">keys</span><span class="p">()))</span>
-        <span class="k">return</span> <span class="n">label2cgraph</span></div>
-
-
-<div class="viewcode-block" id="CGraph.unknown">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.unknown">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">unknown</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a CGraph containing nodes with unknown label (-1).</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: Subgraph containing only nodes whose label == -1.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">nodes</span> <span class="o">=</span> <span class="n">nx</span><span class="o">.</span><span class="n">get_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-        <span class="n">unknown_nodes</span> <span class="o">=</span> <span class="p">[</span><span class="n">node_id</span> <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">nodes</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">label</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-        <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">nodes</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>  <span class="c1"># restore labels to the graph</span>
-        <span class="k">return</span> <span class="n">CGraph</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">subgraph</span><span class="p">(</span><span class="n">unknown_nodes</span><span class="p">))</span></div>
-
-
-    <span class="k">def</span><span class="w"> </span><span class="fm">__lshift__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Assign labels from a subgraph (or a single label) back to this graph.</span>
-
-<span class="sd">        Two usage patterns:</span>
-<span class="sd">            * graph &lt;&lt; subgraph (other is CGraph): copies and remaps subgraph labels</span>
-<span class="sd">              into the parent graph, ensuring label ids do not collide.</span>
-<span class="sd">            * graph &lt;&lt; label (other is int): set the entire graph to a single label.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            other (CGraph | int): If CGraph, its node labels are remapped and</span>
-<span class="sd">                                  applied to self. If int, assign that label to all nodes.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: self (after modification).</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">other</span><span class="p">,</span> <span class="n">CGraph</span><span class="p">):</span>
-            <span class="c1"># Case: graph &lt;&lt; subgraph</span>
-            <span class="n">subgraph_nodes_labels</span> <span class="o">=</span> <span class="n">other</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="s1">&#39;label&#39;</span><span class="p">)</span>
-            <span class="n">subgraph_unique_labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">([</span><span class="n">label</span> <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">subgraph_nodes_labels</span><span class="p">])</span>
-            <span class="n">subgraph_label_remapping</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="nb">int</span><span class="p">(</span><span class="n">label</span><span class="p">):</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">+</span> <span class="n">i</span> <span class="k">if</span> <span class="n">label</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span> <span class="k">else</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subgraph_unique_labels</span><span class="p">)</span>
-            <span class="p">}</span>
-            <span class="n">label_setter</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="n">node_id</span><span class="p">:</span> <span class="n">subgraph_label_remapping</span><span class="p">[</span><span class="n">label</span><span class="p">]</span> <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">subgraph_nodes_labels</span>
-            <span class="p">}</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">subgraph_unique_labels</span><span class="p">)</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">label_setter</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-            <span class="k">return</span> <span class="bp">self</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1"># Case: graph &lt;&lt; label</span>
-            <span class="bp">self</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="n">other</span> <span class="o">+</span> <span class="mi">1</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">other</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>
-            <span class="k">return</span> <span class="bp">self</span>
-
-<div class="viewcode-block" id="CGraph.set_labels">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.set_labels">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">set_labels</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span> <span class="n">label</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Set `label` for the given list of node IDs.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            node_ids (list[str]): List of node IDs to set the label for.</span>
-<span class="sd">            label: Label to assign to the provided nodes.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">source_attrs</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="n">n</span><span class="p">:</span> <span class="n">label</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">()</span> <span class="k">if</span> <span class="p">(</span><span class="n">n</span> <span class="ow">in</span> <span class="n">node_ids</span><span class="p">)</span>
-        <span class="p">}</span>
-        <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">source_attrs</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="CGraph.set_attr_from">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.set_attr_from">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">set_attr_from</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graph</span><span class="p">,</span> <span class="n">data_attrs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Copy specific node attributes from `graph` into a copy of self.</span>
-
-<span class="sd">        This method performs a total assignment of attributes (no remapping).</span>
-<span class="sd">        It returns a new CGraph (a copy of self) with requested attributes copied</span>
-<span class="sd">        from the provided `graph`. If &#39;label&#39; is among attributes, the next_label</span>
-<span class="sd">        of the new graph is also updated from the source graph.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            graph (CGraph): Source graph from which attributes are copied.</span>
-<span class="sd">            data_attrs (list[str]): List of node attribute names to copy.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: New CGraph formed by the assignment of attributes.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">new_cgraph</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-
-        <span class="k">for</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">data_attrs</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">attr</span> <span class="o">==</span> <span class="s1">&#39;label&#39;</span><span class="p">:</span>
-                <span class="n">new_cgraph</span><span class="o">.</span><span class="n">next_label</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">next_label</span>
-
-            <span class="c1"># Extract only attributes of nodes that exist in both graphs</span>
-            <span class="n">source_attrs</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="n">n</span><span class="p">:</span> <span class="n">d</span><span class="p">[</span><span class="n">attr</span><span class="p">]</span> <span class="k">for</span> <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">attr</span> <span class="ow">in</span> <span class="n">d</span> <span class="ow">and</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">new_cgraph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span>
-            <span class="p">}</span>
-            <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="n">new_cgraph</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">source_attrs</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">new_cgraph</span></div>
-
-
-<div class="viewcode-block" id="CGraph.pattern">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.pattern">[docs]</a>
-    <span class="nd">@classmethod</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">pattern</span><span class="p">(</span><span class="n">cgraph_cls</span><span class="p">,</span> <span class="n">my_graph</span><span class="p">,</span> <span class="n">pattern_graph</span><span class="p">,</span> <span class="n">method</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">from_my_graph</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Modify a graph based on the structure of another pattern graph.</span>
-
-<span class="sd">        Supported `method` values:</span>
-<span class="sd">            - &#39;cut_edges&#39;: Return a graph C where C has the same nodes as A</span>
-<span class="sd">                 and only the edges that are present in both A and B</span>
-<span class="sd">                 (intersection of edges).</span>
-<span class="sd">                 After: len(A) == len(C)</span>
-<span class="sd">            - &#39;cut_nodes&#39;: Return a graph C that contains the nodes in A that are also present in B.</span>
-<span class="sd">                 Edges and nodes not in the intersection are removed, so len(A) != len(B) generally.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            cgraph_cls: Class (CGraph) -- kept for signature compatibility.</span>
-<span class="sd">            my_graph (CGraph): Primary graph (A) used in the operation.</span>
-<span class="sd">            pattern_graph (CGraph): Pattern graph (B) used to cut A.</span>
-<span class="sd">            method (str): &#39;cut_edges&#39; or &#39;cut_nodes&#39;.</span>
-<span class="sd">            from_my_graph (bool): If True, produce the new graph from `my_graph`;</span>
-<span class="sd">                                  otherwise, produce it from `pattern_graph`.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: Resulting graph after applying the pattern operation.</span>
-
-<span class="sd">        Raises:</span>
-<span class="sd">            ValueError: If the method is not supported.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;cut_edges&#39;</span><span class="p">:</span>
-            <span class="n">pattern_edges</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">pattern_graph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">))</span>
-            <span class="n">self_edges</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">my_graph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">edges</span><span class="p">))</span>
-            <span class="n">intersection_edges</span> <span class="o">=</span> <span class="n">self_edges</span> <span class="o">&amp;</span> <span class="n">pattern_edges</span>
-
-            <span class="n">new_cgraph</span> <span class="o">=</span> <span class="p">(</span><span class="n">my_graph</span> <span class="k">if</span> <span class="n">from_my_graph</span> <span class="k">else</span> <span class="n">pattern_graph</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-            <span class="n">new_cgraph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">remove_edges_from</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">self_edges</span> <span class="o">-</span> <span class="n">intersection_edges</span><span class="p">))</span>
-            <span class="k">return</span> <span class="n">new_cgraph</span>
-        <span class="k">elif</span> <span class="n">method</span> <span class="o">==</span> <span class="s1">&#39;cut_nodes&#39;</span><span class="p">:</span>
-            <span class="n">pattern_nodes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">pattern_graph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">))</span>
-            <span class="n">self_nodes</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">my_graph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">nodes</span><span class="p">))</span>
-            <span class="n">intersection_nodes</span> <span class="o">=</span> <span class="n">self_nodes</span> <span class="o">&amp;</span> <span class="n">pattern_nodes</span>
-
-            <span class="n">new_cgraph</span> <span class="o">=</span> <span class="p">(</span><span class="n">my_graph</span> <span class="k">if</span> <span class="n">from_my_graph</span> <span class="k">else</span> <span class="n">pattern_graph</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-            <span class="n">new_cgraph</span><span class="o">.</span><span class="n">G</span><span class="o">.</span><span class="n">remove_nodes_from</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">self_nodes</span> <span class="o">-</span> <span class="n">intersection_nodes</span><span class="p">))</span>
-            <span class="k">return</span> <span class="n">new_cgraph</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Method [</span><span class="si">{</span><span class="n">method</span><span class="si">}</span><span class="s2">] not allowed&quot;</span><span class="p">)</span></div>
-
-
-<div class="viewcode-block" id="CGraph.direct_k_nearest_neighbors">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.CGraph.direct_k_nearest_neighbors">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">direct_k_nearest_neighbors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">k</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">maximize</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Wrapper to compute k nearest neighbors for a node using provided helper.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            node_id: Node identifier for which to find neighbors.</span>
-<span class="sd">            k (int): Number of nearest neighbors to return.</span>
-<span class="sd">            weight: Edge attribute used as weight or distance (forwarded).</span>
-<span class="sd">            maximize (bool): If True, treat higher values as better (forwarded).</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            list: Result of direct_nearest_neighbors(self.G, node_id, k, ...)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="n">direct_nearest_neighbors</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">,</span> <span class="n">maximize</span><span class="o">=</span><span class="n">maximize</span><span class="p">)</span></div>
-</div>
-
-
-<div class="viewcode-block" id="Analyser">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.Analyser">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">Analyser</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A class for analyzing and manipulating CGraph cluster structures.</span>
-<span class="sd">    </span>
-<span class="sd">    Provides methods for deep clique clustering, cluster representative </span>
-<span class="sd">    visualization, graph dismembering, and group merging operations.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize an Analyser object.&quot;&quot;&quot;</span>
-        <span class="k">pass</span>
-    
-<div class="viewcode-block" id="Analyser.deep_clique">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.Analyser.deep_clique">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">deep_clique</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">G</span><span class="p">:</span> <span class="n">CGraph</span><span class="p">,</span> <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span> <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CGraph</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Apply recursive clique clustering to the graph.</span>
-<span class="sd">        </span>
-<span class="sd">        Args:</span>
-<span class="sd">            G (CGraph): Input graph.</span>
-<span class="sd">            max_iter (int, optional): Maximum number of iterations. Defaults to 10.</span>
-<span class="sd">            step  (int, optional): Step between iterations</span>
-<span class="sd">        </span>
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: The clustered graph.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">__deep_clique</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span><span class="p">,</span> <span class="n">step</span><span class="o">=</span><span class="n">step</span><span class="p">)</span></div>
-
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">__deep_clique</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">G</span><span class="p">:</span> <span class="n">CGraph</span><span class="p">,</span> <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">10</span><span class="p">,</span> <span class="n">step</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CGraph</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Internal recursive method for performing clique clustering.</span>
-<span class="sd">        </span>
-<span class="sd">        Args:</span>
-<span class="sd">            G (CGraph): Input graph.</span>
-<span class="sd">            max_iter (int, optional): Maximum number of iterations. Defaults to 10.</span>
-<span class="sd">            step  (int, optional): Step between iterations</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: The clustered graph after recursive clique clustering.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">max_iter</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">G</span>
-        
-        <span class="n">G</span><span class="o">.</span><span class="n">nxcluster</span><span class="p">(</span><span class="s1">&#39;clique&#39;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">max_iter</span><span class="p">)</span>
-        <span class="n">subgraphs</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">dismember</span><span class="p">()</span>
-        
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">unknown_subgraph</span> <span class="o">=</span> <span class="n">subgraphs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-        <span class="k">except</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">G</span>
-        
-        <span class="n">sub_G</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__deep_clique</span><span class="p">(</span><span class="n">unknown_subgraph</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="n">max_iter</span><span class="o">-</span><span class="n">step</span><span class="p">)</span>
-        <span class="n">G</span> <span class="o">&lt;&lt;</span> <span class="n">sub_G</span>  <span class="c1"># Assigns labels from the subgraph to the larger graph</span>
-        <span class="k">return</span> <span class="n">G</span>
-     
-<div class="viewcode-block" id="Analyser.show_representatives">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.Analyser.show_representatives">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">show_representatives</span><span class="p">(</span>
-        <span class="bp">self</span><span class="p">,</span>
-        <span class="n">G</span><span class="p">:</span> <span class="n">CGraph</span><span class="p">,</span>
-        <span class="n">n_objs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
-        <span class="n">weight</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">core_method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;degree&#39;</span><span class="p">,</span>
-        <span class="n">only_unknown</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-        <span class="n">not_display_unknown</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-        <span class="n">filter_node_ids</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-        <span class="n">show_node_id</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
-        <span class="n">TEXT_COLUMN</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="s1">&#39;produto_detalhado&#39;</span><span class="p">,</span>
-        <span class="n">ID_GTIN_COLUMN</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="s1">&#39;gtin&#39;</span>
-    <span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Display representative nodes of each cluster in the terminal.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            G (CGraph): The input graph.</span>
-<span class="sd">            n_objs (int, optional): Number of representative nodes to display per cluster. Defaults to 1.</span>
-<span class="sd">            weight (str, optional): Attribute label used in representative calculation.</span>
-<span class="sd">            core_method (str, optional): GCluster method used to compute representatives. Defaults to &#39;degree&#39;.</span>
-<span class="sd">            only_unknown (bool, optional): If True, only display cluster -1. Assumes all clustered nodes are correct. Defaults to False.</span>
-<span class="sd">            not_display_unknown (bool, optional): If True, hide unknown cluster (-1). Defaults to False.</span>
-<span class="sd">            filter_node_ids (list[str], optional): Show clusters only if they contain at least one of these node_ids. Defaults to None.</span>
-<span class="sd">            show_node_id (bool, optional): If True, also display the node_id. Defaults to False.</span>
-<span class="sd">            TEXT_COLUMN (str): Defines the column of string to be show. By default it&#39;s &#39;produto_detalhado&#39;.</span>
-<span class="sd">            ID_GTIN_COLUMN (str): Defines the column of gtin to be show. By default it&#39;s &#39;gtin&#39;.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">subgraphs</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">dismember</span><span class="p">()</span>
-        <span class="k">if</span> <span class="o">-</span><span class="mi">1</span> <span class="ow">in</span> <span class="n">subgraphs</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Clustered nodes: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">G</span><span class="p">)</span><span class="w"> </span><span class="o">-</span><span class="w"> </span><span class="nb">len</span><span class="p">(</span><span class="n">subgraphs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span><span class="si">}</span><span class="s2"> / </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">G</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Clustered nodes: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">G</span><span class="p">)</span><span class="si">}</span><span class="s2"> (fully clustered)&quot;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of clusters: &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">subgraphs</span><span class="p">))</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n</span><span class="s2">&quot;</span><span class="p">)</span>
-        
-        <span class="k">def</span><span class="w"> </span><span class="nf">node2text</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="n">subgraph</span><span class="p">):</span>
-            <span class="n">data</span> <span class="o">=</span> <span class="n">subgraph</span><span class="p">[</span><span class="n">node_id</span><span class="p">]</span>
-            <span class="n">text</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
-            <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="n">ID_GTIN_COLUMN</span><span class="p">]</span><span class="si">:</span><span class="s2">15</span><span class="si">}</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot; &quot;</span>  <span class="c1"># Adds the GTIN</span>
-            <span class="k">if</span> <span class="n">show_node_id</span><span class="p">:</span>
-                <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">node_id</span><span class="si">:</span><span class="s2">32</span><span class="si">}</span><span class="s2">&quot;</span>
-            <span class="n">text</span> <span class="o">+=</span> <span class="s2">&quot;    &quot;</span>
-            <span class="n">text</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">data</span><span class="p">[</span><span class="n">TEXT_COLUMN</span><span class="p">]</span><span class="si">:</span><span class="s2">80</span><span class="si">}</span><span class="s2">&quot;</span>
-            <span class="k">return</span> <span class="n">text</span>
-            
-        <span class="k">for</span> <span class="n">i_iter</span><span class="p">,</span> <span class="p">(</span><span class="n">label</span><span class="p">,</span> <span class="n">subgraph</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">subgraphs</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
-            <span class="k">if</span> <span class="n">not_display_unknown</span> <span class="ow">and</span> <span class="n">label</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span> 
-                <span class="k">continue</span>
-            
-            <span class="k">if</span> <span class="p">(</span><span class="n">filter_node_ids</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">([</span><span class="n">node_id</span> <span class="ow">in</span> <span class="n">filter_node_ids</span> <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">subgraph</span><span class="o">.</span><span class="n">nodes</span><span class="p">()]):</span>
-                <span class="k">continue</span>  <span class="c1"># If filter_node_ids != [] and the subgraph contains none of them, skip</span>
-            
-            <span class="n">gtin_true_counts</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">([</span><span class="n">subgraph</span><span class="p">[</span><span class="n">node_id</span><span class="p">][</span><span class="n">ID_GTIN_COLUMN</span><span class="p">]</span> <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">subgraph</span><span class="o">.</span><span class="n">nodes</span><span class="p">()],</span> <span class="n">return_counts</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">1</span><span class="p">]</span>
-            <span class="n">most_representatives</span> <span class="o">=</span> <span class="n">subgraph</span><span class="o">.</span><span class="n">core</span><span class="p">(</span><span class="n">method</span><span class="o">=</span><span class="n">core_method</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="n">weight</span><span class="p">)[:</span><span class="n">n_objs</span><span class="p">]</span>
-            
-            <span class="k">if</span> <span class="p">(</span><span class="n">n_objs</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">most_representatives</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span> <span class="ow">or</span> <span class="p">(</span><span class="n">only_unknown</span> <span class="ow">and</span> <span class="n">label</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span><span class="p">):</span>
-                <span class="c1"># Show in one line</span>
-                <span class="n">node_id</span> <span class="o">=</span> <span class="n">most_representatives</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;label </span><span class="si">{</span><span class="n">label</span><span class="si">:</span><span class="s2">3</span><span class="si">}</span><span class="s2"> [trueL/nn: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">gtin_true_counts</span><span class="p">)</span><span class="si">:</span><span class="s2">3</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">subgraph</span><span class="p">)</span><span class="si">:</span><span class="s2">4</span><span class="si">}</span><span class="s2">]:     &quot;</span> <span class="o">+</span> <span class="n">node2text</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="n">subgraph</span><span class="p">))</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="c1"># Show in multiple lines</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;label </span><span class="si">{</span><span class="n">label</span><span class="si">:</span><span class="s2">3</span><span class="si">}</span><span class="s2"> [trueL/nn: </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">gtin_true_counts</span><span class="p">)</span><span class="si">:</span><span class="s2">3</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">subgraph</span><span class="p">)</span><span class="si">:</span><span class="s2">4</span><span class="si">}</span><span class="s2">] &quot;</span><span class="p">,</span> <span class="s1">&#39;-&#39;</span><span class="o">*</span><span class="mi">20</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">most_representatives</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="s1">&#39; &#39;</span><span class="o">*</span><span class="mi">8</span><span class="p">,</span> <span class="n">node2text</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="n">subgraph</span><span class="p">))</span></div>
-
-        
-<div class="viewcode-block" id="Analyser.stream_dismember">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.Analyser.stream_dismember">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">stream_dismember</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Gs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">CGraph</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">CGraph</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Apply the cut_edges process across multiple graphs, </span>
-<span class="sd">        returning a graph with the intersection of their edges.</span>
-<span class="sd">        The edges of the first graph will be used and trimmed by the others.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            Gs (list[CGraph]): List of input graphs.</span>
-<span class="sd">        </span>
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: Graph containing the edge intersection of all graphs.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">final_graph</span> <span class="o">=</span> <span class="n">Gs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="k">for</span> <span class="n">graph</span> <span class="ow">in</span> <span class="n">Gs</span><span class="p">[</span><span class="mi">1</span><span class="p">:]:</span>
-            <span class="n">final_graph</span> <span class="o">=</span> <span class="n">CGraph</span><span class="o">.</span><span class="n">pattern</span><span class="p">(</span><span class="n">final_graph</span><span class="p">,</span> <span class="n">graph</span><span class="p">,</span> <span class="s1">&#39;cut_edges&#39;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">final_graph</span></div>
-
-
-<div class="viewcode-block" id="Analyser.group_merging">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.Analyser.group_merging">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">group_merging</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graph</span><span class="p">:</span> <span class="n">CGraph</span><span class="p">,</span> <span class="n">merging_threshold</span><span class="p">:</span><span class="nb">float</span><span class="p">,</span> <span class="n">maximize</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">iters</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">kneighbors</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">7</span><span class="p">,</span> 
-                      <span class="n">core_len</span><span class="p">:</span><span class="nb">int</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CGraph</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Perform group merging based on similarity between representative components.</span>
-
-<span class="sd">        Args:</span>
-<span class="sd">            graph (CGraph): Graph with cluster labels to merge.</span>
-<span class="sd">            merging_threshold (float): Edge similarity threshold for merging.</span>
-<span class="sd">            maximize (bool, optional): </span>
-<span class="sd">                - If True, merge clusters when similarity &gt; threshold.  </span>
-<span class="sd">                - If False, merge clusters when similarity &lt; threshold. Defaults to True.</span>
-<span class="sd">            iters (int, optional): Number of iterations. Defaults to 5.</span>
-<span class="sd">            kneighbors (int, optional): Number of nearest representative neighbors per iteration. Defaults to 7.</span>
-<span class="sd">            core_len (int, optional): Number of representatives per cluster. Ensures the core is always merged. Defaults to 3.</span>
-<span class="sd">            verbose (bool): prints output on terminal. By default it&#39;s False.</span>
-
-<span class="sd">        Returns:</span>
-<span class="sd">            CGraph: The graph with merged groups.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        
-        <span class="c1"># Add core_len to kneighbors to ensure there are enough neighbors to cover the core</span>
-        <span class="n">kneighbors</span> <span class="o">+=</span> <span class="n">core_len</span>
-        
-        <span class="n">atual_graph</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        
-        <span class="k">for</span> <span class="n">i_iter</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">iters</span><span class="p">):</span>    
-            <span class="c1"># Filter to keep only representatives</span>
-            <span class="n">subgraphs</span> <span class="o">=</span> <span class="n">atual_graph</span><span class="o">.</span><span class="n">dismember</span><span class="p">()</span>
-            
-            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;iter </span><span class="si">{</span><span class="n">i_iter</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot; &quot;</span><span class="o">*</span><span class="mi">4</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;dismembered into </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">subgraphs</span><span class="p">)</span><span class="si">}</span><span class="s1"> subgraphs&#39;</span><span class="p">)</span>
-            
-            <span class="c1"># Dictionary mapping each core tuple to its subgraph</span>
-            <span class="n">coretuple2subgraph</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="nb">tuple</span><span class="p">(</span><span class="n">subgraph</span><span class="o">.</span><span class="n">core</span><span class="p">(</span><span class="n">core_len</span><span class="p">)):</span> <span class="n">subgraph</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">subgraph</span> <span class="ow">in</span> <span class="n">subgraphs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">label</span> <span class="o">!=</span> <span class="o">-</span><span class="mi">1</span>
-            <span class="p">}</span>
-            
-            <span class="c1"># Collect only representative nodes</span>
-            <span class="n">only_representatives</span> <span class="o">=</span> <span class="n">atual_graph</span><span class="o">.</span><span class="n">subgraph</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">chain</span><span class="o">.</span><span class="n">from_iterable</span><span class="p">(</span><span class="n">coretuple2subgraph</span><span class="o">.</span><span class="n">keys</span><span class="p">())))</span>
-            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Number of only_representatives: &quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">only_representatives</span><span class="p">))</span>
-            
-            <span class="c1"># Begin merging process</span>
-            <span class="n">same_groups</span> <span class="o">=</span> <span class="p">{}</span>
-            <span class="n">next_label</span> <span class="o">=</span> <span class="mi">0</span>   <span class="c1"># Unique label marker for groups</span>
-            <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">only_representatives</span><span class="o">.</span><span class="n">nodes</span><span class="p">():</span>  <span class="c1"># For each representative node </span>
-                
-                <span class="c1"># If already regrouped, propagate label</span>
-                <span class="k">if</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">same_groups</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span> 
-                    <span class="n">propag_label</span> <span class="o">=</span> <span class="n">same_groups</span><span class="p">[</span><span class="n">node_id</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>  <span class="c1"># Otherwise, create a new label</span>
-                    <span class="n">propag_label</span> <span class="o">=</span> <span class="n">next_label</span>
-                    
-                    <span class="c1"># Assign the label to all nodes from the same core</span>
-                    <span class="k">for</span> <span class="n">core_tuple</span> <span class="ow">in</span> <span class="n">coretuple2subgraph</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-                        <span class="k">if</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">core_tuple</span><span class="p">:</span>
-                            <span class="k">for</span> <span class="n">core_id</span> <span class="ow">in</span> <span class="n">core_tuple</span><span class="p">:</span>
-                                <span class="n">same_groups</span><span class="p">[</span><span class="n">core_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">next_label</span>
-                    
-                    <span class="n">next_label</span> <span class="o">+=</span> <span class="mi">1</span>
-                
-                <span class="c1"># Get the k nearest neighbors</span>
-                <span class="n">nearests</span> <span class="o">=</span> <span class="n">only_representatives</span><span class="o">.</span><span class="n">direct_k_nearest_neighbors</span><span class="p">(</span><span class="n">node_id</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="n">kneighbors</span><span class="p">,</span> <span class="n">weight</span><span class="o">=</span><span class="s1">&#39;similarity_score&#39;</span><span class="p">)</span>
-                
-                <span class="c1"># Merging conditions:</span>
-                <span class="c1"># maximize=True  -&gt; score &gt; threshold</span>
-                <span class="c1"># maximize=False -&gt; score &lt; threshold</span>
-                <span class="k">for</span> <span class="n">neighbor_id</span><span class="p">,</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">nearests</span><span class="p">:</span>
-                    <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">maximize</span> <span class="o">^</span> <span class="p">(</span><span class="n">score</span> <span class="o">&gt;</span> <span class="n">merging_threshold</span><span class="p">)):</span>
-                        <span class="n">same_groups</span><span class="p">[</span><span class="n">neighbor_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">propag_label</span>
-            
-            <span class="c1"># Reorganize into {label: list of representative node_ids after merging}</span>
-            <span class="n">groups</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">same_groups</span><span class="o">.</span><span class="n">values</span><span class="p">()}</span>
-            <span class="k">for</span> <span class="n">node_id</span><span class="p">,</span> <span class="n">label</span> <span class="ow">in</span> <span class="n">same_groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="n">groups</span><span class="p">[</span><span class="n">label</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">node_id</span><span class="p">)</span>
-            
-            <span class="c1"># Keep only groups with more than 1 representative</span>
-            <span class="n">groups</span> <span class="o">=</span> <span class="p">{</span><span class="n">label</span><span class="p">:</span> <span class="n">node_ids</span> <span class="k">for</span> <span class="n">label</span><span class="p">,</span> <span class="n">node_ids</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">node_ids</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">}</span>
-            
-            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Merging groups: &quot;</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span>
-            
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">groups</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;No mergings were performed&quot;</span><span class="p">)</span>
-                <span class="k">return</span> <span class="n">atual_graph</span>
-            
-            <span class="c1"># Map each merging group to subgraphs</span>
-            <span class="n">mergelabel2subgraph</span> <span class="o">=</span> <span class="p">{}</span>
-            <span class="k">for</span> <span class="n">subgraph_coretuple</span><span class="p">,</span> <span class="n">subgraph</span> <span class="ow">in</span> <span class="n">coretuple2subgraph</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="k">for</span> <span class="n">new_label</span><span class="p">,</span> <span class="n">merged_node_ids</span> <span class="ow">in</span> <span class="n">groups</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                    <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="nb">bool</span><span class="p">(</span><span class="n">mni</span> <span class="ow">in</span> <span class="n">subgraph_coretuple</span><span class="p">)</span> <span class="k">for</span> <span class="n">mni</span> <span class="ow">in</span> <span class="n">merged_node_ids</span><span class="p">]):</span>  <span class="c1"># If they match</span>
-                        <span class="k">if</span> <span class="n">new_label</span> <span class="ow">in</span> <span class="n">mergelabel2subgraph</span><span class="o">.</span><span class="n">keys</span><span class="p">():</span>
-                            <span class="n">mergelabel2subgraph</span><span class="p">[</span><span class="n">new_label</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">subgraph</span><span class="p">)</span>
-                        <span class="k">else</span><span class="p">:</span>
-                            <span class="n">mergelabel2subgraph</span><span class="p">[</span><span class="n">new_label</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">subgraph</span><span class="p">]</span>
-                        <span class="k">break</span>  <span class="c1"># Each subgraph belongs to only one group</span>
-            
-            <span class="c1"># Recalculate and reassign labels</span>
-            <span class="k">for</span> <span class="n">new_label</span><span class="p">,</span> <span class="n">subgraphs</span> <span class="ow">in</span> <span class="n">mergelabel2subgraph</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                <span class="n">max_label</span> <span class="o">=</span> <span class="o">-</span><span class="mi">2</span>
-                <span class="n">merged_node_ids</span> <span class="o">=</span> <span class="p">[]</span>
-                <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">subgraphs</span><span class="p">:</span>
-                    <span class="n">max_label</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">max_label</span><span class="p">,</span> <span class="nb">int</span><span class="p">((</span><span class="nb">next</span><span class="p">(</span><span class="nb">iter</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="s1">&#39;label&#39;</span><span class="p">))))[</span><span class="mi">1</span><span class="p">]))</span>
-                    <span class="n">merged_node_ids</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">s</span><span class="o">.</span><span class="n">nodes</span><span class="p">())</span>
-                
-                <span class="c1"># Set all merged nodes to max_label</span>
-                <span class="n">node_setter</span> <span class="o">=</span> <span class="p">{</span><span class="n">node_id</span><span class="p">:</span> <span class="n">max_label</span> <span class="k">for</span> <span class="n">node_id</span> <span class="ow">in</span> <span class="n">merged_node_ids</span><span class="p">}</span>
-                <span class="n">nx</span><span class="o">.</span><span class="n">set_node_attributes</span><span class="p">(</span><span class="n">atual_graph</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">node_setter</span><span class="p">,</span> <span class="s1">&#39;label&#39;</span><span class="p">)</span>  <span class="c1"># Apply new labels</span>
-            
-            <span class="c1"># Display current representatives</span>
-            <span class="k">if</span> <span class="n">verbose</span><span class="p">:</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n\n\n\n</span><span class="s2">Process finished, showing representatives&quot;</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">show_representatives</span><span class="p">(</span><span class="n">atual_graph</span><span class="p">,</span> <span class="n">n_objs</span><span class="o">=</span><span class="mi">15</span><span class="p">)</span>
-                <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">*</span><span class="mi">15</span><span class="p">)</span>
-            
-        <span class="k">return</span> <span class="n">atual_graph</span></div>
-</div>
-
-
-<span class="n">CLUSTERING_DEFAULTS</span> <span class="o">=</span> <span class="n">SimpleNamespace</span><span class="p">(</span>
-    <span class="n">STRINGMATCH_THRESHOLD</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>                      <span class="c1">## threshold do stringmatch</span>
-    <span class="n">BERT_THRESHOLD</span><span class="o">=</span><span class="mf">0.7</span><span class="p">,</span>                             <span class="c1">## threshold do bert</span>
-    <span class="n">GRAPHBUILDER_FIELD_IDNFE</span><span class="o">=</span><span class="s2">&quot;id_nfe&quot;</span><span class="p">,</span>              <span class="c1">## coluna do dataframe utilizado para o id nfe</span>
-    <span class="n">GRAPHBUILDER_FIELD_STR</span><span class="o">=</span><span class="s2">&quot;produto_detalhado&quot;</span><span class="p">,</span>     <span class="c1">## coluna do dataframe utilizado como fonte do texto</span>
-    <span class="n">MAX_ITER_CLIQUE</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span>                             <span class="c1">## quantidade de vezes que ele vai rodar o clique</span>
-    <span class="n">STEP_CLIQUE</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>                                  <span class="c1">## step de cada iteração do clique</span>
-    <span class="n">GROUP_MERGING_THRESHOLD</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>                    <span class="c1">## threshold mínimo para se fazer o merging de grupos</span>
-    <span class="n">MERGING_MAXIMIZE</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                          <span class="c1">## a ideia é a fazer uma maximização da similaridade de merging</span>
-    <span class="n">MERGING_ITERS</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>                                <span class="c1">## quantidade de iterações que se faz o group merging</span>
-    <span class="n">MERGING_KN</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>                                   <span class="c1">## quantidade de grupos de representativos comparados por vez</span>
-    <span class="n">MERGING_CORE</span><span class="o">=</span><span class="mi">3</span>                                  <span class="c1">## quantidade de representativos por grupo</span>
-<span class="p">)</span>
+<span></span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span><span class="o">,</span><span class="w"> </span><span class="nn">inspect</span><span class="o">,</span><span class="w"> </span><span class="nn">igraph</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">ig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Iterable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Optional</span>
 
 <div class="viewcode-block" id="NFeCluster">
 <a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.NFeCluster">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">NFeCluster</span><span class="p">():</span>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
-                 <span class="n">embedding_model</span><span class="p">:</span><span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="o">|</span><span class="n">SentenceTransformer</span><span class="p">]</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                 <span class="n">data</span><span class="p">:</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
-                 <span class="p">):</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeCluster</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Orchestrator for clustering using a precomputed compact graph from an EdgeGenerator.</span>
+
+<span class="sd">    The class is intentionally small: it asks the EdgeGenerator for a compact igraph.Graph</span>
+<span class="sd">    (unique representatives only) at initialization, then exposes `run()` to execute a</span>
+<span class="sd">    chosen igraph community detection algorithm and expands the compact labels back to</span>
+<span class="sd">    the original IDs using `edge_generator.expand_clusters(...)`.</span>
+
+<span class="sd">    Example:</span>
+<span class="sd">        gen = StringMatchEdgeGenerator(items, ids, cache_dir)</span>
+<span class="sd">        clusterer = NFeCluster(edge_generator=gen, threshold=0.85)</span>
+
+<span class="sd">        # Run Louvain</span>
+<span class="sd">        expanded = clusterer.run(&quot;louvain&quot;, resolution=1.0)</span>
+<span class="sd">        # expanded is list[(original_id, params_with_cluster), ...] length == len(ids)</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        edge_generator: Instance implementing generate_compact_graph(threshold) and</span>
+<span class="sd">                        expand_clusters(compact_labels, params).</span>
+<span class="sd">        threshold: Threshold used to filter edges when generating the compact graph.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">edge_generator</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">threshold</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="c1"># Basic validation</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">edge_generator</span><span class="p">,</span> <span class="s2">&quot;generate_compact_graph&quot;</span><span class="p">)</span> <span class="ow">or</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span>
+            <span class="n">edge_generator</span><span class="p">,</span> <span class="s2">&quot;expand_clusters&quot;</span>
+        <span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;edge_generator must implement generate_compact_graph(threshold) and expand_clusters(labels, params)&quot;</span>
+            <span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">edge_generator</span> <span class="o">=</span> <span class="n">edge_generator</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">threshold</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">threshold</span><span class="p">)</span>
+
+        <span class="c1"># create compact graph once and reuse for subsequent run() calls</span>
+        <span class="c1"># compact_graph is an igraph.Graph of representative nodes only</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">compact_graph</span><span class="p">:</span> <span class="n">ig</span><span class="o">.</span><span class="n">Graph</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edge_generator</span><span class="o">.</span><span class="n">generate_compact_graph</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">threshold</span><span class="p">)</span>
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Public API</span>
+    <span class="c1"># -------------------------</span>
+<div class="viewcode-block" id="NFeCluster.run">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.NFeCluster.run">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Constructor of NFeCluster class.</span>
+<span class="sd">        Run the requested clustering algorithm on the compact graph, then expand results.</span>
 
 <span class="sd">        Args:</span>
-<span class="sd">            embedding_model (str|SentenceTransformer): specifies the SentenceTransformer model used to embed texts. </span>
-<span class="sd">                By default, it&#39;s the string &#39;sentence-transformers/all-MiniLM-L6-v2&#39;, but if you </span>
-<span class="sd">                want to use a pre-installed model, you can pass a SentenceTransformer instance. See </span>
-<span class="sd">                more about the usage in the class similarity_graph.BERTEmbeddingEdgeGenerator with the </span>
-<span class="sd">                parameter &#39;model&#39;. </span>
-<span class="sd">            </span>
-<span class="sd">            data (list[str] | pd.DataFrame): specifies the data that will be clustered. By default, it&#39;s None, indicating</span>
-<span class="sd">                that it will be passed after initialization using the method &#39;add_data&#39; (it&#39;s recommended to use this </span>
-<span class="sd">                approach if you intend to add CGraphs to the data). Otherwise, you can pass a pandas DataFrame that must </span>
-<span class="sd">                follow the format required by similarity_graph.EdgeGenerator. In this case, a StringMatchEdgeGenerator will </span>
-<span class="sd">                be created using values from CLUSTERING_DEFAULTS.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-                
-        <span class="bp">self</span><span class="o">.</span><span class="n">embedding_model</span> <span class="o">=</span> <span class="n">embedding_model</span> <span class="ow">or</span> <span class="s1">&#39;sentence-transformers/all-MiniLM-L6-v2&#39;</span>
-        
-        <span class="c1">## dict in the format: {&#39;dismember&#39;:[cgraph1,cgraph2...], &#39;merging&#39;:[cgraph1,cgraph2...]}</span>
-        <span class="c1">## graphs under &#39;dismember&#39; are used to separate different types of clusters using their edges</span>
-        <span class="c1">## graphs under &#39;merging&#39; are used to merge different clusters based on connections between cluster representatives. </span>
-        <span class="c1">## See more in Analyser.group_merging</span>
-                
-        <span class="bp">self</span><span class="o">.</span><span class="n">graphs</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;dismember&#39;</span><span class="p">:[],</span><span class="s1">&#39;merging&#39;</span><span class="p">:[]}</span> 
-        
-        <span class="k">if</span> <span class="n">data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="c1">## Creates a StringMatchGenerator. Otherwise, assumes that data will be passed later</span>
-            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">data</span><span class="p">,</span><span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">):</span>
-                <span class="n">edge_gen</span> <span class="o">=</span> <span class="n">StringMatchEdgeGenerator</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
-                <span class="n">edges_df</span> <span class="o">=</span> <span class="n">edge_gen</span><span class="o">.</span><span class="n">generate_edges</span><span class="p">(</span><span class="n">field_str</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_STR</span><span class="p">)</span>
-                <span class="n">sm_graph</span> <span class="o">=</span> <span class="n">build_graph</span><span class="p">(</span><span class="n">data</span><span class="p">,</span><span class="n">edges_df</span><span class="p">,</span><span class="n">column_name</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_IDNFE</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">add_data</span><span class="p">(</span><span class="n">sm_graph</span><span class="p">,</span><span class="n">graph_type</span><span class="o">=</span><span class="s1">&#39;dismember&#39;</span><span class="p">,</span><span class="n">not_nfe</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="c1">## Creates a DataFrame from data=list[str], considering that nfes are not passed</span>
-                <span class="n">nfes_fake</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)))</span>
-                <span class="n">datadf</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_IDNFE</span><span class="p">:</span><span class="n">nfes_fake</span><span class="p">,</span> 
-                                            <span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_STR</span><span class="p">:</span><span class="n">data</span><span class="p">})</span>
-                <span class="n">edge_gen</span> <span class="o">=</span> <span class="n">StringMatchEdgeGenerator</span><span class="p">(</span><span class="n">datadf</span><span class="p">)</span>
-                <span class="n">edges_df</span> <span class="o">=</span> <span class="n">edge_gen</span><span class="o">.</span><span class="n">generate_edges</span><span class="p">(</span><span class="n">field_str</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_STR</span><span class="p">)</span>
-                <span class="n">sm_graph</span> <span class="o">=</span> <span class="n">build_graph</span><span class="p">(</span><span class="n">datadf</span><span class="p">,</span><span class="n">edges_df</span><span class="p">,</span><span class="n">column_name</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GRAPHBUILDER_FIELD_IDNFE</span><span class="p">)</span>
-                <span class="bp">self</span><span class="o">.</span><span class="n">add_data</span><span class="p">(</span><span class="n">sm_graph</span><span class="p">,</span><span class="n">graph_type</span><span class="o">=</span><span class="s1">&#39;dismember&#39;</span><span class="p">,</span><span class="n">not_nfe</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-                
-    
-<div class="viewcode-block" id="NFeCluster.add_data">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.NFeCluster.add_data">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">add_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">data</span><span class="p">:</span><span class="n">nx</span><span class="o">.</span><span class="n">Graph</span><span class="p">,</span><span class="n">graph_type</span><span class="p">:</span><span class="nb">str</span><span class="p">,</span><span class="n">name</span><span class="p">:</span><span class="nb">str</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span><span class="n">not_nfe</span><span class="p">:</span><span class="nb">bool</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Add a graph built by one of the classes extended from similarity_graph.EdgeGenerator.</span>
-<span class="sd">                </span>
-<span class="sd">        Args:</span>
-<span class="sd">            data (networkx.Graph): graph to be added.</span>
-<span class="sd">            graph_type (str): the type of the graph (&#39;dismember&#39; or &#39;merging&#39;).</span>
-<span class="sd">            name (str): name of the graph. Default is None.</span>
-<span class="sd">            not_nfe(bool): if true, considers that you will not pass nfe. By default it&#39;s False.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-                
-        
-        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="p">(</span><span class="n">graph_type</span><span class="o">==</span><span class="s1">&#39;dismember&#39;</span> <span class="ow">or</span> <span class="n">graph_type</span><span class="o">==</span><span class="s1">&#39;merging&#39;</span><span class="p">)):</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;graph_type &#39;</span><span class="si">{</span><span class="n">graph_type</span><span class="si">}</span><span class="s2">&#39; is not allowed. It must be &#39;dismember&#39; or &#39;merging&#39;&quot;</span><span class="p">)</span>
-        
-        <span class="bp">self</span><span class="o">.</span><span class="n">nfes_provided</span> <span class="o">=</span> <span class="ow">not</span> <span class="n">not_nfe</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">graphs</span><span class="p">[</span><span class="n">graph_type</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">CGraph</span><span class="p">(</span><span class="n">data</span><span class="p">,</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">))</span></div>
-
-
-<div class="viewcode-block" id="NFeCluster.cluster">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.clustering.NFeCluster.cluster">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">cluster</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span><span class="n">apply_merging</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">clustering_method</span><span class="o">=</span><span class="s1">&#39;deep_clique&#39;</span><span class="p">,</span><span class="n">clustering_method_params</span><span class="o">=</span><span class="p">{}):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Perform graph clustering using the specified method and optionally apply a merging phase.</span>
-<span class="sd">        </span>
-<span class="sd">        This function handles clustering of a dismembered graph using different strategies.</span>
-<span class="sd">        By default, it uses the &quot;deep_clique&quot; method unless another clustering algorithm </span>
-<span class="sd">        is specified. After clustering, an optional merging phase can be applied to </span>
-<span class="sd">        refine and combine clusters.</span>
-<span class="sd">        </span>
-<span class="sd">        Args:</span>
-<span class="sd">            apply_merging (bool, optional): Whether to apply the merging phase after clustering. </span>
-<span class="sd">                Defaults to False.</span>
-<span class="sd">            clustering_method (str, optional): The clustering algorithm to use. </span>
-<span class="sd">                Defaults to &#39;deep_clique&#39;.</span>
-<span class="sd">            clustering_method_params (dict, optional): Parameters for the clustering method.</span>
-<span class="sd">                Defaults to an empty dict.</span>
+<span class="sd">            algorithm: name of the algorithm to run. Supported names:</span>
+<span class="sd">                - &quot;louvain&quot;</span>
+<span class="sd">                - &quot;leiden&quot;</span>
+<span class="sd">                - &quot;label_propagation&quot;</span>
+<span class="sd">                - &quot;walktrap&quot;</span>
+<span class="sd">                - &quot;fastgreedy&quot;</span>
+<span class="sd">                - &quot;infomap&quot;</span>
+<span class="sd">                - &quot;connected_components&quot;</span>
+<span class="sd">            **kwargs: extra parameters forwarded to the underlying igraph method when applicable.</span>
 
 <span class="sd">        Returns:</span>
-<span class="sd">            tuple:</span>
-<span class="sd">                - dict: A mapping from node ID (`id_nfe`) to its assigned cluster label.</span>
-<span class="sd">                - networkx.Graph: The clustered graph with labels assigned to nodes.</span>
+<span class="sd">            List[Tuple[original_id, params_with_cluster]]: list with length equal to the</span>
+<span class="sd">            total number of original IDs; each entry contains the original ID and a dict</span>
+<span class="sd">            with metadata + assigned cluster (the cluster value is assigned inside</span>
+<span class="sd">            edge_generator.expand_clusters and will be a UUID per cluster).</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">analyser</span> <span class="o">=</span> <span class="n">Analyser</span><span class="p">()</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graphs</span><span class="p">[</span><span class="s1">&#39;dismember&#39;</span><span class="p">])</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">all_cutted</span> <span class="o">=</span> <span class="n">analyser</span><span class="o">.</span><span class="n">stream_dismember</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graphs</span><span class="p">[</span><span class="s1">&#39;dismember&#39;</span><span class="p">])</span>
+        <span class="n">algorithm_lower</span> <span class="o">=</span> <span class="n">algorithm</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="c1"># Run clustering on compact graph and obtain membership list</span>
+        <span class="n">membership</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_run_algorithm</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">compact_graph</span><span class="p">,</span> <span class="n">algorithm_lower</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+        <span class="c1"># Build params dictionary to be stored for each original id (will be copied per id)</span>
+        <span class="n">params</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">&quot;algorithm&quot;</span><span class="p">:</span> <span class="n">algorithm_lower</span><span class="p">,</span>
+            <span class="s2">&quot;algorithm_params&quot;</span><span class="p">:</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()},</span>
+            <span class="s2">&quot;threshold&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">threshold</span>
+        <span class="p">}</span>
+
+        <span class="c1"># Expand clusters using the edge generator (it will attach cluster UUID etc)</span>
+        <span class="n">expanded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">edge_generator</span><span class="o">.</span><span class="n">expand_clusters</span><span class="p">(</span><span class="n">membership</span><span class="p">,</span> <span class="n">params</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">expanded</span></div>
+
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Internal helpers</span>
+    <span class="c1"># -------------------------</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run_algorithm</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">graph</span><span class="p">:</span> <span class="n">ig</span><span class="o">.</span><span class="n">Graph</span><span class="p">,</span> <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute an igraph community detection method and return a membership list</span>
+<span class="sd">        (one cluster label per vertex of the compact graph).</span>
+
+<span class="sd">        This function normalizes the variety of return types from igraph (VertexClustering</span>
+<span class="sd">        objects, Clustering, VertexDendrogram, VertexSeq membership arrays, or ConnectedComponents).</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            graph: igraph.Graph to cluster (compact graph).</span>
+<span class="sd">            algorithm: normalized name of the algorithm (lower case).</span>
+<span class="sd">            **kwargs: forwarded to the igraph call when applicable.</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            membership: List[int] of length graph.vcount() with a cluster label per vertex.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">graph</span><span class="o">.</span><span class="n">vcount</span><span class="p">()</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="n">algo</span> <span class="o">=</span> <span class="n">algorithm</span><span class="o">.</span><span class="n">lower</span><span class="p">()</span>
+
+        <span class="c1"># Dispatch table: map algorithm name -&gt; callable that returns a clustering-like object</span>
+        <span class="c1"># Each entry accepts (graph, **kwargs) and must return either:</span>
+        <span class="c1"># - igraph.VertexClustering (preferred), or</span>
+        <span class="c1"># - list/iterable of labels (length == n_vertices), or</span>
+        <span class="c1"># - igraph.Clustering/VertexDendrogram which can be converted to membership.</span>
+        <span class="k">if</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;louvain&quot;</span><span class="p">:</span>
+            <span class="c1"># community_multilevel returns VertexClustering</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_multilevel</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_multilevel</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;leiden&quot;</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="s2">&quot;community_leiden&quot;</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;igraph was built without community_leiden support on this environment.&quot;</span><span class="p">)</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_leiden</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_leiden</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;label_propagation&quot;</span><span class="p">:</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_label_propagation</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_label_propagation</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;walktrap&quot;</span><span class="p">:</span>
+            <span class="c1"># walktrap returns a VertexDendrogram; convert to clustering with as_clustering()</span>
+            <span class="n">wd</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_walktrap</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_walktrap</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">wd</span><span class="o">.</span><span class="n">as_clustering</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;fastgreedy&quot;</span><span class="p">:</span>
+            <span class="n">fg</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_fastgreedy</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_fastgreedy</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">fg</span><span class="o">.</span><span class="n">as_clustering</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="o">==</span> <span class="s2">&quot;infomap&quot;</span><span class="p">:</span>
+            <span class="c1"># infomap returns VertexClustering in most builds; if it doesn&#39;t exist raise informative error</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">graph</span><span class="p">,</span> <span class="s2">&quot;community_infomap&quot;</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;igraph was built without community_infomap support on this environment.&quot;</span><span class="p">)</span>
+            <span class="n">clustering_obj</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">community_infomap</span><span class="p">(</span><span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">_filter_kwargs</span><span class="p">(</span><span class="n">graph</span><span class="o">.</span><span class="n">community_infomap</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">))</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+
+        <span class="k">elif</span> <span class="n">algo</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;connected_components&quot;</span><span class="p">,</span> <span class="s2">&quot;components&quot;</span><span class="p">,</span> <span class="s2">&quot;clusters&quot;</span><span class="p">):</span>
+            <span class="c1"># connected components: igraph.Graph.clusters() returns VertexClustering-like object</span>
+            <span class="n">comp</span> <span class="o">=</span> <span class="n">graph</span><span class="o">.</span><span class="n">clusters</span><span class="p">()</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_clustering_to_membership</span><span class="p">(</span><span class="n">comp</span><span class="p">)</span>
+
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">all_cutted</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">graphs</span><span class="p">[</span><span class="s1">&#39;dismember&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-        
-        <span class="c1">## apply clustering</span>
-        <span class="k">if</span> <span class="n">clustering_method</span> <span class="o">==</span> <span class="s1">&#39;deep_clique&#39;</span><span class="p">:</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">clustering_method_params</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">analyser</span><span class="o">.</span><span class="n">deep_clique</span><span class="p">(</span>
-                    <span class="n">all_cutted</span><span class="p">,</span>
-                    <span class="n">max_iter</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">MAX_ITER_CLIQUE</span><span class="p">,</span>
-                    <span class="n">step</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">STEP_CLIQUE</span>
-                <span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">analyser</span><span class="o">.</span><span class="n">deep_clique</span><span class="p">(</span><span class="n">all_cutted</span><span class="p">,</span> <span class="o">**</span><span class="n">clustering_method_params</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="c1">## assumes that the clustering method already contains the rest of the implementation</span>
-            <span class="n">all_cutted</span><span class="o">.</span><span class="n">nxcluster</span><span class="p">(</span><span class="n">clustering_method</span><span class="p">,</span> <span class="o">**</span><span class="n">clustering_method_params</span><span class="p">)</span>
-        
-        <span class="c1">## apply merging if requested</span>
-        <span class="k">if</span> <span class="n">apply_merging</span><span class="p">:</span>
-            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">graphs</span><span class="p">[</span><span class="s1">&#39;merging&#39;</span><span class="p">])</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unknown clustering algorithm &#39;</span><span class="si">{</span><span class="n">algorithm</span><span class="si">}</span><span class="s2">&#39;. Supported: &quot;</span>
+                             <span class="s2">&quot;louvain, leiden, label_propagation, walktrap, fastgreedy, infomap, connected_components&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_clustering_to_membership</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize igraph clustering-like objects to a membership list.</span>
+
+<span class="sd">        Accepts:</span>
+<span class="sd">            - igraph VertexClustering (has .membership)</span>
+<span class="sd">            - igraph Clustering / VertexDendrogram (convert via .membership or .as_clustering())</span>
+<span class="sd">            - iterable/list of ints</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            membership: list[int] length == number of vertices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># VertexClustering or similar: try .membership first</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">,</span> <span class="s2">&quot;membership&quot;</span><span class="p">):</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">clustering_obj</span><span class="o">.</span><span class="n">membership</span><span class="p">)</span>
+
+        <span class="c1"># VertexDendrogram has as_clustering()</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">,</span> <span class="s2">&quot;as_clustering&quot;</span><span class="p">):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">cl</span> <span class="o">=</span> <span class="n">clustering_obj</span><span class="o">.</span><span class="n">as_clustering</span><span class="p">()</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cl</span><span class="p">,</span> <span class="s2">&quot;membership&quot;</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">cl</span><span class="o">.</span><span class="n">membership</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                 <span class="k">pass</span>
-                <span class="c1"># print(&quot;There are no graphs of &#39;merging&#39; type. Ignoring merging phase&quot;)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">all_cutted</span> <span class="o">=</span> <span class="n">analyser</span><span class="o">.</span><span class="n">group_merging</span><span class="p">(</span>
-                    <span class="n">all_cutted</span><span class="p">,</span>
-                    <span class="n">merging_threshold</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">GROUP_MERGING_THRESHOLD</span><span class="p">,</span>
-                    <span class="n">maximize</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">MERGING_MAXIMIZE</span><span class="p">,</span>
-                    <span class="n">iters</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">MERGING_ITERS</span><span class="p">,</span>
-                    <span class="n">kneighbors</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">MERGING_KN</span><span class="p">,</span>
-                    <span class="n">core_len</span><span class="o">=</span><span class="n">CLUSTERING_DEFAULTS</span><span class="o">.</span><span class="n">MERGING_CORE</span>
-                <span class="p">)</span>
-        
-        <span class="c1">## prepare output</span>
-        <span class="c1">## the output is in the format: id_nfe:label</span>
-        <span class="n">idnfe2label</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">all_cutted</span><span class="o">.</span><span class="n">nodes</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="s1">&#39;label&#39;</span><span class="p">))</span>  <span class="c1">## note: node ID is the same as id_nfe</span>
-        
-        <span class="c1">## If nfes were not provided (they are fake), the output will be sorted based on field nfe</span>
-        <span class="c1"># print(&quot;not self.nfes_provided: &quot;,not self.nfes_provided)</span>
-        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">nfes_provided</span><span class="p">:</span>
-            <span class="n">sorted_idx</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="n">idnfe2label</span><span class="o">.</span><span class="n">keys</span><span class="p">())))</span>
-            <span class="n">unsorted_labels</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">idnfe2label</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
-            <span class="n">only_labels</span> <span class="o">=</span> <span class="p">[</span><span class="nb">str</span><span class="p">(</span><span class="n">unsorted_labels</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span> <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">sorted_idx</span><span class="p">]</span>
-            <span class="k">return</span> <span class="n">only_labels</span><span class="p">,</span> <span class="n">all_cutted</span> <span class="c1">## list[str] , CGraph</span>
-        <span class="k">return</span> <span class="n">idnfe2label</span><span class="p">,</span> <span class="n">all_cutted</span></div>
-</div>
+
+        <span class="c1"># If it&#39;s already an iterable of labels</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">membership</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">clustering_obj</span><span class="p">)</span>
+            <span class="k">if</span> <span class="nb">all</span><span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">bool</span><span class="p">))</span> <span class="ow">or</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="p">(</span><span class="nb">str</span><span class="p">,))</span> <span class="ow">and</span> <span class="n">x</span><span class="o">.</span><span class="n">isdigit</span><span class="p">())</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">membership</span><span class="p">):</span>
+                <span class="c1"># coerce to int</span>
+                <span class="k">return</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">membership</span><span class="p">]</span>
+            <span class="k">return</span> <span class="n">membership</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Unable to normalize clustering result into membership list.&quot;</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_filter_kwargs</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Keep only kwargs that are accepted by the target igraph function.</span>
+
+<span class="sd">        This avoids igraph raising TypeError for unexpected args forwarded from user.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">sig</span> <span class="o">=</span> <span class="n">inspect</span><span class="o">.</span><span class="n">signature</span><span class="p">(</span><span class="n">func</span><span class="p">)</span>
+            <span class="n">accepted</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">sig</span><span class="o">.</span><span class="n">parameters</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+            <span class="k">return</span> <span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">accepted</span><span class="p">}</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># fallback: pass everything if introspection fails</span>
+            <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">kwargs</span><span class="p">)</span></div>
 
 </pre></div>
 

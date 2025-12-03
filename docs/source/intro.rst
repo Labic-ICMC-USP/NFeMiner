@@ -1,9 +1,6 @@
 Introduction
 ============
 
-Motivation
-----------
-
 Although **Electronic Invoices (NF-e)** are a rich source of data about commercial transactions, they often suffer from **information quality issues**. The most common problems include:
 
 - **Missing data**  

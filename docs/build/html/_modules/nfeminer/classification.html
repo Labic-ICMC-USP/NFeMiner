@@ -87,9 +87,9 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.preprocessing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Normalizer</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.pipeline</span><span class="w"> </span><span class="kn">import</span> <span class="n">make_pipeline</span>
 
-<div class="viewcode-block" id="NFeModelCreator">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator">[docs]</a>
-<span class="k">class</span><span class="w"> </span><span class="nc">NFeModelCreator</span><span class="p">:</span>
+<div class="viewcode-block" id="NFeMinerModelCreator">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">NFeMinerModelCreator</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    NFeModelCreator is a class designed to build multiple text-based models for product description data.</span>
 <span class="sd">    </span>
@@ -113,7 +113,7 @@
                  <span class="n">trusted_records</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">100</span><span class="p">,</span> 
                  <span class="n">vectorizer</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;TFIDF_CHAR_NGRAM&#39;</span><span class="p">,</span>
                  <span class="n">embedding</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;SBERT&#39;</span><span class="p">,</span>
-
+                 <span class="n">basedir</span><span class="o">=</span><span class="s1">&#39;./&#39;</span>
         <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize the model creator with dataset, vectorizer, and embedding options.</span>
@@ -134,6 +134,7 @@
         <span class="c1"># Store input dataset and trusted records threshold in instance variables</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">dataset</span> <span class="o">=</span> <span class="n">data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">trusted_records</span> <span class="o">=</span> <span class="n">trusted_records</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">basedir</span> <span class="o">=</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="n">basedir</span><span class="si">}</span><span class="s1">/models&#39;</span>
 
         <span class="c1"># Predefine multiple vectorizer configurations for text feature extraction</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">vectorizer_configs</span> <span class="o">=</span> <span class="p">{</span>
@@ -178,8 +179,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">create_vectorizer_tensors_model</span><span class="p">()</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">create_embedding_tensors_model</span><span class="p">()</span>
 
-<div class="viewcode-block" id="NFeModelCreator.create_string_match_model">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_string_match_model">[docs]</a>
+<div class="viewcode-block" id="NFeMinerModelCreator.create_string_match_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator.create_string_match_model">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">create_string_match_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Create a dictionary-based string match model.</span>
@@ -190,7 +191,7 @@
 <span class="sd">        The result is saved as a pickle file mapping unique descriptions to their GTIN.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating String Match model...&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating String Match model...&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         
         <span class="c1"># Group dataset by GTIN and &#39;original&#39; description, counting occurrences</span>
         <span class="n">data_count</span> <span class="o">=</span> <span class="p">(</span>
@@ -198,10 +199,11 @@
             <span class="o">.</span><span class="n">groupby</span><span class="p">([</span><span class="s1">&#39;gtin&#39;</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">])</span>
             <span class="o">.</span><span class="n">size</span><span class="p">()</span>
             <span class="o">.</span><span class="n">reset_index</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="s1">&#39;count&#39;</span><span class="p">)</span>
+            <span class="o">.</span><span class="n">sort_values</span><span class="p">(</span><span class="n">by</span><span class="o">=</span><span class="s1">&#39;count&#39;</span><span class="p">,</span> <span class="n">ascending</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
         <span class="p">)</span>
 
         <span class="c1"># Filter to keep only descriptions with counts above the trusted_records threshold</span>
-        <span class="n">data_filtered</span> <span class="o">=</span> <span class="n">data_count</span><span class="p">[</span><span class="n">data_count</span><span class="p">[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">trusted_records</span><span class="p">]</span>
+        <span class="n">data_filtered</span> <span class="o">=</span> <span class="n">data_count</span><span class="p">[</span><span class="n">data_count</span><span class="p">[</span><span class="s1">&#39;count&#39;</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">trusted_records</span><span class="p">]</span>
 
         <span class="c1"># Group by GTIN, aggregating original descriptions into sets</span>
         <span class="n">model</span> <span class="o">=</span> <span class="p">(</span>
@@ -210,7 +212,7 @@
             <span class="o">.</span><span class="n">agg</span><span class="p">(</span><span class="nb">set</span><span class="p">)</span>
             <span class="o">.</span><span class="n">reset_index</span><span class="p">()</span>
             <span class="c1"># For each GTIN row, filter descriptions unique to that GTIN</span>
-            <span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">string_match</span><span class="o">=</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">row</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_unique_descriptions</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">df</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+            <span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="n">string_match</span><span class="o">=</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="k">lambda</span> <span class="n">row</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_unique_descriptions</span><span class="p">(</span><span class="n">row</span><span class="p">,</span> <span class="n">df</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">df</span><span class="o">.</span><span class="n">empty</span> <span class="k">else</span> <span class="p">{})</span>
             <span class="c1"># Keep only rows where there are unique descriptions</span>
             <span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="k">lambda</span> <span class="n">df</span><span class="p">:</span> <span class="n">df</span><span class="p">[</span><span class="s1">&#39;string_match&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="nb">bool</span><span class="p">)]</span>
             <span class="c1"># Convert sets back to lists for easier processing</span>
@@ -226,11 +228,11 @@
         <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_string_match.pkl&#39;</span><span class="p">)</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String Match model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String Match model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="NFeModelCreator.create_vectorizer_tensors_model">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_vectorizer_tensors_model">[docs]</a>
+<div class="viewcode-block" id="NFeMinerModelCreator.create_vectorizer_tensors_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator.create_vectorizer_tensors_model">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">create_vectorizer_tensors_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Create a vectorizer-based model for 1-NN classification.</span>
@@ -268,7 +270,7 @@
         <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Vectorizer model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span>
 
         <span class="c1"># Convert sparse matrix to dense numpy array</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating tensor model for 1-NN classification...&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating tensor model for 1-NN classification...&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">array_vectors</span> <span class="o">=</span> <span class="n">model_knn</span><span class="o">.</span><span class="n">toarray</span><span class="p">()</span>
 
         <span class="c1"># Convert each numpy vector to a PyTorch tensor of float32 dtype</span>
@@ -286,11 +288,11 @@
         <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_1_NN.pkl&#39;</span><span class="p">)</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">df_vectors</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Tensor model for 1-NN classification saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Tensor model for 1-NN classification saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="NFeModelCreator.create_embedding_tensors_model">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_embedding_tensors_model">[docs]</a>
+<div class="viewcode-block" id="NFeMinerModelCreator.create_embedding_tensors_model">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator.create_embedding_tensors_model">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">create_embedding_tensors_model</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Create an embedding-based tensor model using Sentence-BERT.</span>
@@ -315,7 +317,7 @@
         <span class="p">)</span>
 
         <span class="c1"># Print status</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating embedding model...&#39;</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Creating embedding model...&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
         <span class="c1"># Encode descriptions as tensor embeddings using the selected embedding model</span>
         <span class="n">embedded</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span>
@@ -335,11 +337,11 @@
         <span class="n">path_file</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">create_file_path</span><span class="p">(</span><span class="n">filename</span><span class="o">=</span><span class="s1">&#39;model_embedding.pkl&#39;</span><span class="p">)</span>
         <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path_file</span><span class="p">,</span> <span class="s1">&#39;wb&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
             <span class="n">pickle</span><span class="o">.</span><span class="n">dump</span><span class="p">(</span><span class="n">df_vectors</span><span class="p">,</span> <span class="n">f</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding tensor model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding tensor model saved.</span><span class="se">\n\n</span><span class="s1">&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
-<div class="viewcode-block" id="NFeModelCreator.get_unique_descriptions">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.get_unique_descriptions">[docs]</a>
+<div class="viewcode-block" id="NFeMinerModelCreator.get_unique_descriptions">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator.get_unique_descriptions">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">get_unique_descriptions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">row</span><span class="p">,</span> <span class="n">all_data</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Helper function to identify unique &#39;original&#39; descriptions for a given GTIN.</span>
@@ -358,6 +360,9 @@
         <span class="c1"># Collect sets of descriptions from other GTINs (excluding current)</span>
         <span class="n">other_sets</span> <span class="o">=</span> <span class="n">all_data</span><span class="p">[</span><span class="n">all_data</span><span class="p">[</span><span class="s1">&#39;gtin&#39;</span><span class="p">]</span> <span class="o">!=</span> <span class="n">current_gtin</span><span class="p">][</span><span class="s1">&#39;original&#39;</span><span class="p">]</span>
 
+        <span class="k">if</span> <span class="n">other_sets</span><span class="o">.</span><span class="n">empty</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">{}</span>
+        
         <span class="c1"># Union all descriptions from other GTINs</span>
         <span class="n">combined_others</span> <span class="o">=</span> <span class="nb">set</span><span class="p">()</span><span class="o">.</span><span class="n">union</span><span class="p">(</span><span class="o">*</span><span class="n">other_sets</span><span class="p">)</span>
 
@@ -365,9 +370,9 @@
         <span class="k">return</span> <span class="n">current_set</span> <span class="o">-</span> <span class="n">combined_others</span></div>
 
 
-<div class="viewcode-block" id="NFeModelCreator.create_file_path">
-<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeModelCreator.create_file_path">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">create_file_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">dir</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;models&#39;</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;filename.pickle&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<div class="viewcode-block" id="NFeMinerModelCreator.create_file_path">
+<a class="viewcode-back" href="../../nfeminer.html#nfeminer.classification.NFeMinerModelCreator.create_file_path">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">create_file_path</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;filename.pickle&#39;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Helper function to create directory and file path for saving models.</span>
 <span class="sd">        </span>
@@ -379,10 +384,10 @@
 <span class="sd">            str: Full file path to save the model.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Create directory if it doesn&#39;t exist</span>
-        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">basedir</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 
         <span class="c1"># Construct and return full path string</span>
-        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="nb">dir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span></div>
+        <span class="k">return</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">basedir</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span></div>
 </div>
 
 
@@ -400,7 +405,8 @@
                  <span class="n">n_threads</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
                  <span class="n">force_cpu</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
                  <span class="n">min_ngram_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span><span class="p">,</span>
-                 <span class="n">min_embedding_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.4</span>
+                 <span class="n">min_embedding_confidence</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.4</span><span class="p">,</span>
+                 <span class="n">basedir</span><span class="o">=</span><span class="s1">&#39;./&#39;</span>
         <span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initializes the estimator, loads models, and performs classification.</span>
@@ -452,8 +458,6 @@
 
         <span class="c1"># Load SentenceTransformer model for embeddings</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">model</span> <span class="o">=</span> <span class="n">SentenceTransformer</span><span class="p">(</span><span class="n">model</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">device</span><span class="p">)</span>
-
-        <span class="n">basedir</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
 
         <span class="c1"># Load string-matching dictionary model</span>
         <span class="k">try</span><span class="p">:</span>
@@ -509,7 +513,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">loc</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;string_match&#39;</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String-Matching: finished&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;String-Matching: finished&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="NFeMinerGTINEstimator.ngram_classifier">
@@ -559,7 +563,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ngram_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;n_gram_match&#39;</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;NGRAM-Match: finished&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;NGRAM-Match: finished&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
 
@@ -610,7 +614,7 @@
             <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;description_ref&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">embedding_tensor_ref</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">ref_idx</span><span class="p">,</span> <span class="s1">&#39;original&#39;</span><span class="p">]</span>
             <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="o">.</span><span class="n">at</span><span class="p">[</span><span class="n">global_idx</span><span class="p">,</span> <span class="s1">&#39;method&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;embedding_match&#39;</span>
 
-        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding-Match: finished&#39;</span><span class="p">)</span></div>
+        <span class="nb">print</span><span class="p">(</span><span class="s1">&#39;Embedding-Match: finished&#39;</span><span class="p">,</span> <span class="n">flush</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="NFeMinerGTINEstimator.accuracy_measure">
@@ -672,7 +676,6 @@
             <span class="p">)</span></div>
 </div>
 
-    
 
 <span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
     <span class="c1"># Path to feather dataset file</span>
@@ -694,7 +697,7 @@
     <span class="nb">print</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">head</span><span class="p">(</span><span class="mi">2</span><span class="p">))</span>
 
     <span class="c1"># Instantiate the model creator with extracted data</span>
-    <span class="n">model_creator</span> <span class="o">=</span> <span class="n">NFeModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">df</span><span class="p">)</span>
+    <span class="n">model_creator</span> <span class="o">=</span> <span class="n">NFeMinerModelCreator</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">df</span><span class="p">)</span>
 
     <span class="c1"># Configure pandas display options for easier reading</span>
     <span class="n">pd</span><span class="o">.</span><span class="n">set_option</span><span class="p">(</span><span class="s1">&#39;display.max_columns&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>

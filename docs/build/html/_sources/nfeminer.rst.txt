@@ -1,4 +1,4 @@
-nfeminer package
+NFeMiner Package
 ================
 
 .. Submodules
