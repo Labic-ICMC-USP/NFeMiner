@@ -1,0 +1,37 @@
+[project]
+name = "NFeMiner"
+version = "2.0.0"
+description = "NFeMiner is a framework for processing and analyzing Electronic Invoices (NF-e)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "elasticsearch==8.17.2",
+    "hdbscan>=0.8.40",
+    "igraph>=1.0.0",
+    "json5>=0.12.1",
+    "openai>=2.8.1",
+    "openpyxl>=3.1.5",
+    "pandas>=2.2.3",
+    "pyarrow>=22.0.0",
+    "pydantic==2.11.1",
+    "scikit-learn==1.6.1",
+    "scipy>=1.15.2",
+    "sentence-transformers>=3.4.1",
+    "torch==2.7.0",
+    "transformers==4.52.4",
+    "umap-learn>=0.5.9.post2",
+    "lmdb"
+]
+
+[project.optional-dependencies]
+gpu = [
+    "ollama>=0.6.1",
+    "unsloth==2025.7.2",
+    "unsloth-zoo==2025.7.4",
+]
+
+dev = [
+    "pytest>=9.0.1",
+    "sphinx>=8.2.3",
+    "sphinx-rtd-theme>=3.0.2",
+]
