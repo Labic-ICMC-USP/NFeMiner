@@ -1,378 +1,405 @@
+from __future__ import annotations
+
+"""
+Edge generator with LMDB-backed persistent cache and igraph output.
+
+Design:
+  - Input: `items` (list[str]), `ids` (list[int]) with possible repeated texts.
+  - Constructor performs normalization (lower().strip()), contraction (unique texts),
+    inspects LMDB cache for similarities between unique representatives, computes
+    missing similarities in parallel with ProcessPoolExecutor and shows tqdm progress.
+  - LMDB key: big-endian pair of uint64 (min_id, max_id).
+  - LMDB value: binary float16 or float32 (configurable).
+  - generate_graph(threshold) reads LMDB, expands unique-pair similarities to all
+    original ids, adds full-cliques for identical texts (sim = 1.0), and returns:
+        args: dict of hyperparameters used
+        graph: igraph.Graph with vertex attribute 'id', edge attributes 'weight' and 'edge_type'
+"""
+
+import os, struct, uuid, lmdb, numpy as np,  igraph as ig
 from abc import ABC, abstractmethod
-import pandas as pd
-import networkx as nx
-from sentence_transformers import SentenceTransformer, util
+from concurrent.futures import ProcessPoolExecutor
+from itertools import combinations
+from typing import Any, Dict, Iterable, List, Tuple
+from tqdm import tqdm
 from difflib import SequenceMatcher
-from typing import Union, Any, Optional
 
-class EdgeGenerator(ABC):
-    def __init__(self, df: pd.DataFrame):
-        self.df = df
-    
-    @abstractmethod
-    def generate_edges(self) -> pd.DataFrame:
-        """
-        Must return a DataFrame with columns:
-        source, target, edge_type, similarity_score
-        """
-        pass
+# -------------------------
+# Top-level compare registry
+# -------------------------
+# Worker processes will look up comparison function by name from this registry.
+# Add other compare functions here if you implement other EdgeGenerator subclasses.
+def sequence_compare(a: str, b: str) -> float:
+    """Compare two strings using difflib.SequenceMatcher.ratio()."""
+    return SequenceMatcher(None, a, b).ratio()
 
-def build_graph(nodes_df: pd.DataFrame, edges_df: pd.DataFrame, column_name: str = 'id_nfe') -> nx.Graph:
-    """Build a NetworkX Graph from node and edge pandas DataFrames.
 
-    Each row in `nodes_df` becomes a node; the node identifier is taken from
-    the column specified by `column_name`. Each row in `edges_df` becomes an
-    edge and must contain `source` and `target` columns with node identifiers.
-    All other columns from the rows are set as node/edge attributes.
+_COMPARE_REGISTRY = {
+    "sequence": sequence_compare,
+    # future: "rapidfuzz": rapidfuzz_compare, etc.
+}
+
+
+# -------------------------
+# Top-level worker
+# -------------------------
+def _worker_task(task: Tuple[int, str, int, str, str]) -> Tuple[int, int, float]:
+    """
+    Top-level worker executed in child processes.
 
     Args:
-        nodes_df (pd.DataFrame): DataFrame where each row represents a node.
-        edges_df (pd.DataFrame): DataFrame where each row represents an edge.
-        column_name (str): Column name in `nodes_df` that contains the node id.
-            Defaults to `'id_nfe'`.
+        task: (i, text_i, j, text_j, compare_name)
 
     Returns:
-        nx.Graph: A NetworkX graph with node and edge attributes populated
-            from the DataFrame rows.
-
-    Raises:
-        KeyError: If `column_name` is missing in `nodes_df` or if `edges_df`
-            does not contain the required `source` and `target` columns.
+        (i, j, similarity)
     """
-    if column_name not in nodes_df.columns:
-        raise KeyError(f"nodes_df must contain the '{column_name}' column.")
-    if 'source' not in edges_df.columns or 'target' not in edges_df.columns:
-        raise KeyError("edges_df must contain 'source' and 'target' columns.")
+    i, a, j, b, compare_name = task
+    cmp_fn = _COMPARE_REGISTRY[compare_name]
+    sim = float(cmp_fn(a, b))
+    return i, j, sim
 
-    G = nx.Graph()
 
-    # Add nodes with attributes (exclude the id column from attributes)
-    for _, row in nodes_df.iterrows():
-        node_id = row[column_name]
-        attrs = row.to_dict()
-        attrs.pop(column_name, None)
-        G.add_node(node_id, **attrs)
+# -------------------------
+# EdgeGenerator base class
+# -------------------------
+class EdgeGenerator(ABC):
+    """
+    Base class that computes pairwise similarities between unique normalized texts,
+    caches them in LMDB and builds igraph graphs filtered by a threshold.
 
-    # Add edges with attributes (exclude source/target from attributes)
-    for _, row in edges_df.iterrows():
-        src = row["source"]
-        tgt = row["target"]
-        attrs = row.to_dict()
-        attrs.pop("source", None)
-        attrs.pop("target", None)
-        G.add_edge(src, tgt, **attrs)
+    Subclasses must implement `_compute_similarity(a, b)` or choose a `compare_name`
+    that points into the `_COMPARE_REGISTRY` above.
 
-    return G
+    Example:
+        gen = StringMatchEdgeGenerator(items, ids, cache_dir)
+        args, graph = gen.generate_graph(threshold=0.85)
 
-class BERTEmbeddingEdgeGenerator(EdgeGenerator):
-    """Generate graph edges based on SentenceBERT semantic similarity.
-
-    This edge generator encodes texts using a SentenceTransformer and
-    produces an edge list with cosine similarity scores between distinct
-    document pairs.
-
-    Attributes:
-        model (SentenceTransformer): SentenceTransformer instance used to encode texts.
-        df (pd.DataFrame): Input DataFrame provided by the base class.
+    Args:
+        items: list[str] containing text values (may contain duplicates).
+        ids: list[int] same length as items, original integer PRIMARY KEYs (int64).
+        cache_path: directory where LMDB files are stored.
+        similarity_dtype: 'float16' or 'float32' (default 'float16').
+        max_workers: number of parallel workers; default = os.cpu_count().
+        batch_size: internal batch size for writing to LMDB & memory (default 50k).
     """
 
     def __init__(
         self,
-        df: pd.DataFrame,
-        model: Union[str, SentenceTransformer] = 'sentence-transformers/all-MiniLM-L6-v2',
-    ) -> None:
-        """Initialize the edge generator.
+        items: List[str],
+        ids: List[int],
+        cache_path: str,
+        similarity_dtype: str = "float16",
+        max_workers: int | None = None,
+        batch_size: int = 50_000,
+    ):
+        # Validate inputs
+        if len(items) != len(ids):
+            raise ValueError("`items` and `ids` must have the same length.")
+        self.items: List[str] = list(items)
+        self.ids: List[int] = [int(x) for x in ids]
+        self.n_total = len(self.items)
+        self.cache_path = str(cache_path)
+        os.makedirs(self.cache_path, exist_ok=True)
 
-        Args:
-            df (pd.DataFrame): Input DataFrame. Must contain a column matching
-                `ID_NFE_COLUMN` (passed in generate_edges) and the text column you will pass to `generate_edges`.
-            model (str | SentenceTransformer): If a string, the corresponding
-                SentenceTransformer model is loaded; if an instance is provided,
-                it is used directly. Defaults to 'sentence-transformers/all-MiniLM-L6-v2'.
+        if similarity_dtype not in ("float16", "float32"):
+            raise ValueError("similarity_dtype must be 'float16' or 'float32'")
+        self.similarity_dtype = similarity_dtype
+        self.max_workers = max_workers or (os.cpu_count() or 1)
+        self.batch_size = int(batch_size)
+
+        # Edge type label will be provided by subclass (default: class name)
+        self.edge_type = getattr(self, "EDGE_TYPE", self.__class__.__name__)
+
+        # Step 1: normalize and contract duplicates
+        # Normalization used for contraction: lower().strip() (as requested)
+        self._normalized = [s.lower().strip() for s in self.items]
+        # Map normalized_text -> list of original ids (original id values)
+        self.normal_to_ids: Dict[str, List[int]] = {}
+        for idx, txt in enumerate(self._normalized):
+            original_id = self.ids[idx]
+            self.normal_to_ids.setdefault(txt, []).append(original_id)
+
+        # Build list of unique normalized texts and representative IDs (first id in group)
+        self.unique_texts: List[str] = []
+        self.rep_ids: List[int] = []  # representative id (int64) for each unique text
+        self.rep_index_by_text: Dict[str, int] = {}
+
+        for txt, id_list in self.normal_to_ids.items():
+            self.rep_index_by_text[txt] = len(self.unique_texts)
+            self.unique_texts.append(txt)
+            self.rep_ids.append(int(id_list[0]))  # pick first as representative
+
+        self.n_unique = len(self.unique_texts)
+
+        # Build mapping original id -> index in self.ids (for graph vertex indexing)
+        self.id_to_index: Dict[int, int] = {int(idv): i for i, idv in enumerate(self.ids)}
+
+        # LMDB environment path (one DB per subclass class name)
+        db_filename = f"{self.__class__.__name__}.lmdb"
+        self.lmdb_path = os.path.join(self.cache_path, db_filename)
+        self.env = lmdb.open(
+            self.lmdb_path,
+            map_size=1024 ** 4,
+            subdir=False,
+            readonly=False,
+            create=True,
+            metasync=False,
+            sync=False,
+            map_async=True,
+        )
+
+        # Show informational message
+        total_pairs = self.n_unique * (self.n_unique - 1) // 2
+        print(f"[EdgeGenerator] {self.n_total} input items -> {self.n_unique} unique texts.")
+        print(f"[EdgeGenerator] Up to {total_pairs:,} unique pairs to cache (between unique texts).", flush=True)
+
+        # Prepare compare_name used by worker; subclasses can override compare_name
+        # Default: 'sequence' -> uses SequenceMatcher
+        self.compare_name = getattr(self, "COMPARE_NAME", "sequence")
+        if self.compare_name not in _COMPARE_REGISTRY:
+            raise ValueError(f"compare_name '{self.compare_name}' not found in registry")
+
+        # Now inspect LMDB and compute missing similarities (if any).
+        self._compute_missing_similarities_with_progress()
+
+    # -------------------------
+    # Packing helpers
+    # -------------------------
+    @staticmethod
+    def _pack_key(u: int, v: int) -> bytes:
+        """Pack two uint64 integers into a big-endian 16-byte key (min,max)."""
+        u = int(u)
+        v = int(v)
+        if u <= v:
+            return struct.pack(">QQ", u, v)
+        return struct.pack(">QQ", v, u)
+
+    def _pack_value(self, sim: float) -> bytes:
+        """Pack similarity float into bytes according to self.similarity_dtype."""
+        if self.similarity_dtype == "float16":
+            arr = np.array([sim], dtype=np.float16)
+            return arr.tobytes()
+        return np.array([sim], dtype=np.float32).tobytes()
+
+    def _unpack_value(self, data: bytes) -> float:
+        """Unpack similarity bytes according to dtype and return Python float."""
+        if self.similarity_dtype == "float16":
+            return float(np.frombuffer(data, dtype=np.float16)[0])
+        return float(np.frombuffer(data, dtype=np.float32)[0])
+
+    # -------------------------
+    # Subclasses should implement or set compare_name
+    # -------------------------
+    @abstractmethod
+    def _compute_similarity(self, a: str, b: str) -> float:
         """
-        super().__init__(df)
-        if isinstance(model, str):
-            self.model = SentenceTransformer(model)
-        else:
-            self.model = model
-    
-    def generate_edges(self, field_text: str = 'text',ID_NFE_COLUMN:str='id_nfe') -> pd.DataFrame:
-        """Compute pairwise semantic similarity and return edges with scores.
+        Compute similarity between two strings.
 
-        For every pair of distinct rows (i, j) with i < j, this function
-        computes the cosine similarity between their SentenceBERT embeddings
-        and returns a DataFrame with columns:
-            ['source', 'target', 'edge_type', 'similarity_score']
+        Subclasses should implement this method OR set `COMPARE_NAME` to a key present
+        in the module-level `_COMPARE_REGISTRY`. The default `StringMatchEdgeGenerator`
+        implements this using difflib.SequenceMatcher.ratio().
+        """
+        raise NotImplementedError
+
+    # -------------------------
+    # Internal: create tasks generator for missing pairs
+    # -------------------------
+    def _iter_unique_pairs(self) -> Iterable[Tuple[int, str, int, str]]:
+        """Yield (i, text_i, j, text_j) for i < j over unique texts."""
+        for i in range(self.n_unique):
+            ti = self.unique_texts[i]
+            for j in range(i + 1, self.n_unique):
+                yield (i, ti, j, self.unique_texts[j])
+
+    # -------------------------
+    # Compute missing similarities (constructor action)
+    # -------------------------
+    def _compute_missing_similarities_with_progress(self) -> None:
+        """
+        Inspect LMDB to count how many unique pairs are already cached, then
+        compute the missing similarities in parallel while showing a tqdm progress bar.
+        """
+        total_pairs = self.n_unique * (self.n_unique - 1) // 2
+        if total_pairs <= 0:
+            print("[EdgeGenerator] No unique pairs to compute (0 or 1 unique items).")
+            return
+
+        # First pass: count missing pairs (fast read-only txn)
+        missing = 0
+        with self.env.begin(write=False) as txn:
+            for (i, _, j, _) in self._iter_unique_pairs():
+                key = self._pack_key(self.rep_ids[i], self.rep_ids[j])
+                if txn.get(key) is None:
+                    missing += 1
+
+        print(f"[EdgeGenerator] {total_pairs:,} total unique pairs; {missing:,} missing and will be computed now.", flush=True)
+
+        if missing == 0:
+            return
+
+        # Prepare tasks generator for missing pairs (we re-iterate)
+        def missing_tasks_gen():
+            with self.env.begin(write=False) as txn_read:
+                for (i, ti, j, tj) in self._iter_unique_pairs():
+                    key = self._pack_key(self.rep_ids[i], self.rep_ids[j])
+                    if txn_read.get(key) is None:
+                        # include compare_name so workers can pick the function from registry
+                        yield (i, ti, j, tj, self.compare_name)
+
+        # Process tasks in parallel and write in batches to LMDB
+        tasks_iter = missing_tasks_gen()
+
+        # We'll use ProcessPoolExecutor and iterate results to update progress
+        processed = 0
+        batch_writes: List[Tuple[int, int, float]] = []
+
+        with ProcessPoolExecutor(max_workers=self.max_workers) as ex:
+            # ex.map returns results in task order (deterministic). We set chunksize modestly.
+            for (i, j, sim) in tqdm(ex.map(_worker_task, tasks_iter, chunksize=512), total=missing, desc="Computing similarities"):
+                batch_writes.append((i, j, sim))
+                processed += 1
+
+                if len(batch_writes) >= self.batch_size:
+                    # flush batch
+                    with self.env.begin(write=True) as wtxn:
+                        for (ii, jj, s) in batch_writes:
+                            key = self._pack_key(self.rep_ids[ii], self.rep_ids[jj])
+                            wtxn.put(key, self._pack_value(s))
+                    batch_writes = []
+
+            # flush remaining
+            if batch_writes:
+                with self.env.begin(write=True) as wtxn:
+                    for (ii, jj, s) in batch_writes:
+                        key = self._pack_key(self.rep_ids[ii], self.rep_ids[jj])
+                        wtxn.put(key, self._pack_value(s))
+                batch_writes = []
+
+        print(f"[EdgeGenerator] Computed and wrote {processed:,} similarities to LMDB: {self.lmdb_path}", flush=True)
+
+    def generate_compact_graph(self, threshold: float = 0.0) -> ig.Graph:
+        """
+        Generate a compact igraph.Graph containing only unique texts (representatives).
+
+        The method reads pairwise similarities from the LMDB cache (stored between
+        representative ids), applies the provided threshold and builds an igraph
+        that has `n_unique` vertices. Each vertex receives:
+        - "rep_id": representative original id chosen for the unique text
+        - "text": the normalized unique text
+
+        Edges are created only between unique representatives whose cached
+        similarity >= threshold and the edge attribute "weight" receives the similarity.
 
         Args:
-            field_text (str): Name of the column in `self.df` containing text.
-                Defaults to 'text'.
-            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is 'id_nfe'
+            threshold: float in [0,1]. Only edges with similarity >= threshold will
+                    be created in the compact graph.
 
         Returns:
-            pd.DataFrame: Edge list with similarity scores.
-
-        Raises:
-            KeyError: If `ID_NFE_COLUMN` or `field_text` is missing in `self.df`.
+            igraph.Graph: compact graph with n_unique vertices and weighted edges.
         """
-        if ID_NFE_COLUMN not in self.df.columns:
-            raise KeyError(f"DataFrame must contain '{ID_NFE_COLUMN}' column.")
-        if field_text not in self.df.columns:
-            raise KeyError(f"DataFrame must contain '{field_text}' column.")
+        # Prepare result graph with n_unique vertices
+        n = self.n_unique
+        g = ig.Graph()
+        g.add_vertices(n)
 
-        texts = self.df[field_text].fillna("").tolist()
-        ids = self.df[ID_NFE_COLUMN].tolist()
+        # attach representative id and normalized text as vertex attributes
+        # rep_id corresponds to self.rep_ids list; text corresponds to self.unique_texts
+        g.vs["rep_id"] = self.rep_ids
+        g.vs["text"] = self.unique_texts
 
-        # Encode texts to embeddings (tensor). Let SentenceTransformer handle device placement.
-        embeddings = self.model.encode(texts, convert_to_tensor=True)
-
-        # Compute pairwise cosine similarity matrix (torch tensor)
-        sim_matrix = util.pytorch_cos_sim(embeddings, embeddings)
+        # build a mapping rep_id -> rep_index for fast lookup
+        rep_id_to_index = {int(rid): idx for idx, rid in enumerate(self.rep_ids)}
 
         edges = []
-        num_rows = len(ids)
-        for i in range(num_rows):
-            for j in range(i + 1, num_rows):
-                score = float(sim_matrix[i][j].item())
-                edges.append({
-                    'source': ids[i],
-                    'target': ids[j],
-                    'edge_type': 'bert-similarity',
-                    'similarity_score': score
-                })
+        weights = []
 
-        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
+        # read LMDB entries (keys are packed >QQ)
+        with self.env.begin(write=False) as txn:
+            cursor = txn.cursor()
+            for key, val in cursor:
+                try:
+                    u_rep, v_rep = struct.unpack(">QQ", key)
+                except Exception:
+                    # skip malformed key
+                    continue
 
-class NCMSimilarityEdgeGenerator(EdgeGenerator):
-    """Generate edges between records that share the same NCM value.
+                # Get representative indexes; if not found, skip (defensive)
+                i_rep = rep_id_to_index.get(int(u_rep))
+                j_rep = rep_id_to_index.get(int(v_rep))
+                if i_rep is None or j_rep is None:
+                    continue
 
-    This edge generator creates an undirected edge with similarity score 1
-    for every distinct pair of rows in the DataFrame that have identical
-    values in the specified NCM column.
-    """
-    
-    def generate_edges(self, field_ncm: str = 'ncm',ID_NFE_COLUMN:str='id_nfe') -> pd.DataFrame:
-        """Create edges between rows with equal NCM codes.
+                sim = self._unpack_value(val)
+                if sim >= threshold:
+                    edges.append((i_rep, j_rep))
+                    weights.append(sim)
 
-        For each group of rows sharing the same `field_ncm` value, this method
-        emits an edge for every unique pair (i, j) with i < j.
+        # add edges (if any) and set weight attribute
+        if edges:
+            g.add_edges(edges)
+            g.es["weight"] = weights
+
+        return g
+
+    def expand_clusters(self, compact_labels, params):
+        """
+        Expand compact graph cluster labels back to all original IDs.
+
+        Args:
+            compact_labels (List[int]):
+                Cluster label for each representative node (length = n_unique).
+
+            params (Dict[str, Any]):
+                Additional metadata (algorithm name, threshold, hyperparameters).
+                A 'cluster' field will be added automatically for each id.
+
+        Returns:
+            List[Tuple[int, Dict[str, Any]]]:
+                One entry per original ID: (id_original, params_with_cluster)
+        """
+
+        # 1. Map compact cluster labels → unique UUID per cluster
+        cluster_ids = {}
+        for lbl in set(compact_labels):
+            cluster_ids[lbl] = str(uuid.uuid4())
+
+        # 2. Output list
+        out = []
         
-        Args:
-            field_ncm (str): Column name containing the NCM code. Defaults to 'ncm'.
-            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is 'id_nfe'
-        Returns:
-            pd.DataFrame: DataFrame with columns ['source', 'target', 'edge_type', 'similarity_score'].
-        """
-        grouped = self.df.groupby(field_ncm)
-        edges = []
-        for ncm, subdf in grouped:
-            for i, (iidx, row_i) in enumerate(subdf.iterrows()):
-                for j, (jidx, row_j) in enumerate(subdf.iterrows()):
-                    if i >= j:
-                        continue
+        args_base = {"edge_type": self.edge_type, "generator": self.__class__.__name__}
 
-                    edges.append({
-                        "source": row_i[ID_NFE_COLUMN],
-                        "target": row_j[ID_NFE_COLUMN],
-                        "edge_type": "ncm_similarity",
-                        "similarity_score": 1
-                    })
-        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
+        # 3. For each unique normalized text (representative)
+        for idx_unique, rep_id in enumerate(self.rep_ids):
+            compact_label = compact_labels[idx_unique]
+            cluster_uuid = cluster_ids[compact_label]
 
-class ValueRangeEdgeGenerator(EdgeGenerator):
-    """Generate edges for rows whose numeric field falls within a given range.
+            # All original IDs that belong to this representative text
+            norm_text = self.unique_texts[idx_unique]
+            original_ids = self.normal_to_ids[norm_text]
 
-    Edges are produced only between rows that:
-      * belong to the same group (field_group), and
-      * have the `field_valor` value inside (min_value, max_value).
+            for oid in original_ids:
+                # clone params dict to avoid mutating external references
+                p = dict(args_base) | dict(params)
+                p["cluster"] = cluster_uuid
+                out.append((oid, p))
 
-    The produced edge's `similarity_score` is the (possibly normalized) value
-    taken from the `field_valor` column.
+        return out
 
-    Note:
-        This implementation emits an edge for each unique pair (i, j) with i < j
-        inside each group (no cross-group edges).
-    """
-    
-    def generate_edges(
-        self,
-        min_value: Optional[float],
-        max_value: Optional[float],
-        normalize: bool = False,
-        field_valor: str = 'valor',
-        field_group: str = 'unidade',
-        ID_NFE_COLUMN:str='id_nfe'
-    ) -> pd.DataFrame:
-        """Create edges for records with `field_valor` inside [min_value, max_value].
 
-        Args:
-            min_value (float | None): Lower bound for `field_valor`. If None, the
-                minimum value from `self.df[field_valor]` is used.
-            max_value (float | None): Upper bound for `field_valor`. If None, the
-                maximum value from `self.df[field_valor]` is used.
-            normalize (bool): If True, the similarity score is normalized to [0, 1]
-                using (value - min_value) / (max_value - min_value).
-            field_valor (str): Column name that contains the numeric value.
-            field_group (str): Column name used to group rows (edges only inside group).
-
-        Returns:
-            pd.DataFrame: DataFrame with columns ['source', 'target', 'edge_type', 'similarity_score'].
-
-        Raises:
-            KeyError: If required columns are missing from the DataFrame.
-        """
-        # Basic validations
-        if field_valor not in self.df.columns:
-            raise KeyError(f"DataFrame must contain column '{field_valor}'")
-        if field_group not in self.df.columns:
-            raise KeyError(f"DataFrame must contain column '{field_group}'")
-        if ID_NFE_COLUMN not in self.df.columns:
-            raise KeyError(f"DataFrame must contain column '{ID_NFE_COLUMN}'")
-
-        # Resolve min/max if not provided
-        if min_value is None:
-            min_value = float(self.df[field_valor].min())
-        if max_value is None:
-            max_value = float(self.df[field_valor].max())
-
-        grouped = self.df.groupby(field_group)
-        edges = []
-        for group_val, subdf in grouped:
-            for i, (iidx, row_i) in enumerate(subdf.iterrows()):
-                for j, (jidx, row_j) in enumerate(subdf.iterrows()):
-                    if i >= j:
-                        continue
-
-                    sim = row_i[field_valor]
-                    # check range (open interval as in original: min_value < sim < max_value)
-                    if not (min_value < sim and sim < max_value):
-                        continue
-
-                    if normalize:
-                        denom = (max_value - min_value)
-                        # avoid division by zero
-                        if denom == 0:
-                            sim = 0.0
-                        else:
-                            sim = (sim - min_value) / denom
-
-                    edges.append({
-                        "source": row_i[ID_NFE_COLUMN],
-                        "target": row_j[ID_NFE_COLUMN],
-                        "edge_type": "value_range",
-                        "similarity_score": sim
-                    })
-
-        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
-
+# -------------------------
+# Concrete Generator: SequenceMatcher
+# -------------------------
 class StringMatchEdgeGenerator(EdgeGenerator):
-    """Generate edges between records whose text fields are nearly identical.
-
-    This generator uses difflib.SequenceMatcher to compute a similarity ratio
-    between two strings and emits an edge when the ratio exceeds a threshold 
-    (0.95 by default).
     """
-    
-    def generate_edges(self, field_str: str = 'descricao',threshold=0.95,ID_NFE_COLUMN='id_nfe') -> pd.DataFrame:
-        """Create edges for highly similar string pairs.
+    Edge generator using difflib.SequenceMatcher as similarity measure.
 
-        For every unique pair of rows (i, j) with i < j, this method computes
-        the SequenceMatcher ratio between the values in `field_str`. If the
-        similarity ratio is greater than threshold, an undirected edge is emitted
-        with `edge_type` == "string_match" and `similarity_score` equal to the ratio.
-
-        Args:
-            field_str (str): Column name containing the text to compare.
-                Defaults to 'descricao'.
-            threshold (float): Determines the minimal similarity to construct an edge. By 
-                default, it's 0.95.
-            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is 'id_nfe'
-
-        Returns:
-            pd.DataFrame: DataFrame with columns ['source', 'target', 'edge_type', 'similarity_score'].
-        """
-        edges = []
-        for i, row_i in self.df.iterrows():
-            for j, row_j in self.df.iterrows():
-                if i >= j:
-                    continue
-                sim = SequenceMatcher(None, row_i[field_str], row_j[field_str]).ratio()
-                if sim > threshold:
-                    edges.append({
-                        "source": row_i[ID_NFE_COLUMN],
-                        "target": row_j[ID_NFE_COLUMN],
-                        "edge_type": "string_match",
-                        "similarity_score": sim
-                    })
-        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
-
-class PriceBandEdgeGenerator(EdgeGenerator):
+    This class does not need to override the heavy-lifting caching logic;
+    it only provides the comparison name which the worker uses.
     """
-    Edge generator based on the 'valor' field (price or numeric attribute). 
-    
-    This generator creates edges between nodes only if their associated 'valor'
-    lies within a specified numeric band (`min_value`, `max_value`). 
-    The `similarity_score` of each edge corresponds to the value itself and can 
-    optionally be normalized to the [0,1] range, based on the given bounds.
-    
-    Typical use case: grouping or connecting nodes that fall into the same price
-    range or value interval.
-    """
-        
-    def generate_edges(self,
-                       min_value: float,
-                       max_value: float,
-                       normalize: bool = False,
-                       field_valor: str = 'valor',
-                       ID_NFE_COLUMN='id_nfe') -> pd.DataFrame:
-        """
-        Generate edges between nodes based on whether their value field 
-        falls within a specified price band.
 
-        Edges are generated only if the field value is within the specified
-        'min_value' and 'max_value' range. The 'similarity_score' is equal 
-        to the node's value and can be normalized.
+    EDGE_TYPE = "string_match"
+    COMPARE_NAME = "sequence"
 
-        Args:
-            min_value (float): Minimum value of the 'valor' field. If None, 
-                the minimum found in the dataset is used.
-            max_value (float): Maximum value of the 'valor' field. If None, 
-                the maximum found in the dataset is used.
-            normalize (bool): If True, applies normalization to the 
-                similarity score. Normalization maps:
-                    - 'min_value' (if not None) → 0
-                    - 'max_value' (if not None) → 1
-            field_valor (str): Column name containing the value field.
-            ID_NFE_COLUMN (string,optional): Defines the column of id nfe. By default is 'id_nfe'
-
-        Returns:
-            pd.DataFrame: A DataFrame containing the generated edges, 
-            with columns ['source', 'target', 'edge_type', 'similarity_score'].
-        """
-                
-        if min_value is None:
-            min_value = min(self.df[field_valor])
-        if max_value is None:
-            max_value = max(self.df[field_valor])
-            
-        edges = []
-        for i, (iidx, row_i) in enumerate(self.df.iterrows()):
-            for j, (jidx, row_j) in enumerate(self.df.iterrows()):
-                
-                if i >= j:
-                    continue
-                
-                sim = row_i[field_valor]
-                if not (min_value < sim and sim < max_value):
-                    continue
-                
-                if normalize:
-                    sim = (sim - min_value) / (max_value - min_value)
-                
-                edges.append({
-                    "source": row_i[ID_NFE_COLUMN],
-                    "target": row_j[ID_NFE_COLUMN],
-                    "edge_type": "price_band",
-                    "similarity_score": sim
-                })
-        return pd.DataFrame(edges,columns=['source', 'target', 'edge_type', 'similarity_score'])
+    def _compute_similarity(self, a: str, b: str) -> float:  # pragma: no cover - not used directly by workers
+        """Return SequenceMatcher ratio (kept for API completeness)."""
+        return SequenceMatcher(None, a, b).ratio()

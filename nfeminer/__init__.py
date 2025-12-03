@@ -1,7 +1,7 @@
 from .enrichment import NFeMinerBaseGenerateModel
 from .elasticsearch import NFeMinerElasticSearch
 from .classification import NFeMinerGTINEstimator, NFeMinerModelCreator
-from .classification import NFeMinerGTINEstimator, NFeModelCreator
+from .similarity_graph import StringMatchEdgeGenerator
 from .clustering import NFeCluster
 from typing import Union, Optional, List, Dict
 
@@ -223,24 +223,38 @@ class NFeMiner:
         except Exception as e:
             raise Exception(f"The model couldn't be create!!\n\n{str(e)}")
 
-    def clustering(self, descriptions: List[str]) -> dict:
+    def clustering(self, descriptions: List[str], index: List, tmp_files_path="./") -> dict:
         """
-        Clusters product descriptions using semantic similarity.
+        Clusters product descriptions based on semantic similarity using a graph-based
+        community detection algorithm.
+
+        This method constructs a similarity graph from the provided descriptions using
+        `StringMatchEdgeGenerator`, applies a graph clustering via `NFeCluster`,
+        and returns the expanded cluster assignments mapped to the original IDs.
 
         Args:
-            descriptions (List[str]): List of product descriptions.
+            descriptions (List[str]):
+                List of product descriptions.
+            index (List):
+                List of original IDs associated with each description. Must be the same
+                length as `descriptions`. These IDs are used to expand cluster labels
+                back to the full dataset.
+            tmp_files_path (str, optional):
+                Directory where LMDB cache files will be stored. Defaults to `"./"`.
+                The caching mechanism enables large-scale pairwise similarity computation
+                using limited memory.
 
         Returns:
-            label2descs (dict[int,list[str]]): Dictionary mapping cluster labels to grouped descriptions.
+            dict[int, list[str]]:
+                A dictionary mapping each cluster label (int) to the list of product
+                descriptions assigned to that cluster.
+
+        Notes:
+            - Similarity is computed using `difflib.SequenceMatcher` via
+            `StringMatchEdgeGenerator`.
+            - Clustering is performed using the Louvain community detection algorithm.
+            - Similarity values are stored with dtype `float16` to reduce memory usage.
         """
-        nfc = NFeCluster(data=descriptions)
-        only_labels, clusterized = nfc.cluster()
-        
-        label2descs = {}
-        for desc,label in list(zip(descriptions,only_labels)):
-            label = int(label)
-            if label in label2descs.keys():
-                label2descs[label].append(desc)
-            else:
-                label2descs[label] = [desc,]
-        return label2descs
+        gen = StringMatchEdgeGenerator(descriptions, index, tmp_files_path, similarity_dtype="float16", batch_size=200)
+        expanded = NFeCluster(gen, threshold=0.95).run("louvain")
+        return expanded
