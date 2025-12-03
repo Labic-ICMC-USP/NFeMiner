@@ -580,4 +580,4 @@ class NFeMinerOllamaModel(NFeMinerBaseGenerateModel):
         prompt = self.prompt_template.format(f'{self.instruction}\n{self.example}', text)
         return self.client.generate(model=self.model_name, prompt=prompt, options=self.options)['response']
 
-__all__ = ["NFeMinerJSONValidator", "NFeMinerBaseGenerateModel", "NFeMinerLocalModel", "NFeMinerGPTModel", "NFeMinerOllamaModel"]
+__all__ = ["NFeMinerJSONValidator", "NFeMinerBaseGenerateModel", "NFeMinerLocalModel", "NFeMinerOpenRouterModel", "NFeMinerOllamaModel"]
