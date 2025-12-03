@@ -1,6 +1,30 @@
-# **NFeMiner – Electronic Invoice Mining**
+# **NFeMiner 2.0 – Electronic Invoice Mining**
 
-NFeMiner is a framework for processing and analyzing Electronic Invoices (NF-e). It combines semantic enrichment with Large Language Models (LLMs), graph-based clustering, Global Trade Item Number (GTIN) estimation. The output consists of enriched, structured data that can be indexed in Elasticsearch and visualized through Kibana.
+**NFeMiner** is a framework for processing and analyzing Brazilian Electronic Invoices (NF-e).
+It integrates **semantic enrichment with Large Language Models (LLMs)**, **graph-based clustering**, **GTIN estimation**, and **efficient indexing** to produce enriched, structured data ready for analytics and search.
+
+## **The Problem**
+
+NF-e documents often contain **missing fields, inconsistent product descriptions, ambiguous terminology, and a lack of standardization**.
+These issues make it difficult to:
+
+* Identify **invoices referring to the same product**,
+* Perform reliable **statistical analysis**,
+* Compute aggregated metrics such as **average price**,
+* And integrate data across heterogeneous sources.
+
+### **How NFeMiner Solves It**
+
+NFeMiner addresses these challenges by applying:
+
+* **Semantic enrichment** (LLMs or local fine-tuned models) to correct, normalize, and complete NF-e product descriptions.
+* **Similarity-based clustering** to group invoices that refer to the *same underlying product*.
+* **GTIN estimation** to infer missing identifiers using hybrid matching and machine-learning pipelines.
+* **Indexing and search capabilities** through Elasticsearch for scalable exploration and integration with tools like Kibana.
+
+The result is a clean, enriched, standardized dataset that supports robust analytics, interoperability, and automated downstream processing.
+
+---
 
 ## **NFeMiner Architecture and Processing Flows**
 
