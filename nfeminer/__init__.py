@@ -1,8 +1,9 @@
 from .enrichment import NFeMinerBaseGenerateModel
 from .elasticsearch import NFeMinerElasticSearch
 from .classification import NFeMinerGTINEstimator, NFeMinerModelCreator
-from .similarity_graph import StringMatchEdgeGenerator
-from .clustering import NFeCluster
+from .similarity import SimilarityEngine, SequenceMatchSimilarity, NCMSimilarity, CategorySimilarity, TagSimilarity, BERTSimilarity
+from .clustering import NFeMinerClustering
+from .storage import KVStore
 from typing import Union, Optional, List, Dict
 
 class NFeMiner:
@@ -223,38 +224,110 @@ class NFeMiner:
         except Exception as e:
             raise Exception(f"The model couldn't be create!!\n\n{str(e)}")
 
-    def clustering(self, descriptions: List[str], index: List, tmp_files_path="./") -> dict:
+    def clustering(self, index: List, raw_descriptions: List[str], short_description: List[str]=None, full_description: List[str]=None, sales_unit: List[str]=None, ncm: List[str]=None, tags: List[List[str]]=None, category: List[List[str]]=None, tmp_files_path="./similarity_cache") -> dict:
         """
-        Clusters product descriptions based on semantic similarity using a graph-based
-        community detection algorithm.
+        Clusters product data based on semantic and attribute similarity using a
+        graph-based community detection approach.
 
-        This method constructs a similarity graph from the provided descriptions using
-        `StringMatchEdgeGenerator`, applies a graph clustering via `NFeCluster`,
-        and returns the expanded cluster assignments mapped to the original IDs.
+        This method builds a similarity graph from the provided product attributes
+        using multiple similarity functions (e.g., BERT embeddings, sequence matching,
+        and domain-specific comparators), applies clustering via `NFeMinerClustering`,
+        and returns cluster assignments mapped to the original item IDs.
 
         Args:
-            descriptions (List[str]):
-                List of product descriptions.
             index (List):
-                List of original IDs associated with each description. Must be the same
-                length as `descriptions`. These IDs are used to expand cluster labels
-                back to the full dataset.
+                List of original IDs associated with each item. Must match the length
+                of the input attribute lists. These IDs are used to map clustering
+                results back to the original dataset.
+
+            raw_descriptions (List[str]):
+                Base list of product descriptions used as the primary textual feature.
+
+            short_description (List[str], optional):
+                Alternative short descriptions. When provided, they override
+                `semantic_key` for semantic similarity.
+
+            full_description (List[str], optional):
+                Extended product descriptions. Used for additional similarity signals
+                and may override `semantic_key` if present.
+
+            sales_unit (List[str], optional):
+                Sales unit information (e.g., "kg", "unit"). Used for lexical similarity.
+
+            ncm (List[str], optional):
+                NCM (Mercosur Common Nomenclature) codes. Used for domain-specific
+                similarity comparisons.
+
+            tags (List[List[str]], optional):
+                List of tag sets associated with each item. Used for tag-based similarity.
+
+            category (List[List[str]], optional):
+                Hierarchical category information. Used for category-based similarity.
+
             tmp_files_path (str, optional):
-                Directory where LMDB cache files will be stored. Defaults to `"./"`.
-                The caching mechanism enables large-scale pairwise similarity computation
-                using limited memory.
+                Directory used to store LMDB cache files. Defaults to
+                `"./similarity_cache"`. This cache enables scalable pairwise similarity
+                computation with constrained memory usage.
 
         Returns:
-            dict[int, list[str]]:
-                A dictionary mapping each cluster label (int) to the list of product
-                descriptions assigned to that cluster.
+            dict[index, Dict[str, Any]]:
+                Mapping from each item ID to its clustering metadata:
+                {
+                    "clustering": {
+                        "lexical_group": "LEX-042",
+                        "product_group": "PRD-169482",
+                        "product_hierarchy": ["0001", "0001.0003"]
+                    }
+                }
 
-        Notes:
-            - Similarity is computed using `difflib.SequenceMatcher` via
-            `StringMatchEdgeGenerator`.
-            - Clustering is performed using the Louvain community detection algorithm.
-            - Similarity values are stored with dtype `float16` to reduce memory usage.
+                The fields `lexical_group` and `product_group` may be omitted when
+                `lsh_key` is not defined.
         """
-        gen = StringMatchEdgeGenerator(descriptions, index, tmp_files_path, similarity_dtype="float16", batch_size=200)
-        expanded = NFeCluster(gen, threshold=0.95).run("louvain")
-        return expanded
+
+        funcs = [BERTSimilarity('raw_descriptions'), SequenceMatchSimilarity('raw_descriptions')]
+
+        from pandas import DataFrame
+        items = DataFrame(raw_descriptions, columns=["raw_descriptions"])
+
+        semantic_key = "raw_descriptions"
+        if full_description:
+            funcs += [BERTSimilarity('full_description'), SequenceMatchSimilarity('full_description')]
+            items["full_description"] = full_description
+            semantic_key = "full_description"
+
+        if short_description:
+            funcs += [BERTSimilarity('short_description'), SequenceMatchSimilarity('short_description')]
+            items["short_description"] = short_description
+            semantic_key = "short_description"
+
+        if sales_unit:
+            funcs.append(SequenceMatchSimilarity('sales_unit'))
+            items["sales_unit"] = sales_unit
+        
+        if ncm:
+            funcs.append(NCMSimilarity('ncm'))
+            items["ncm"] = ncm
+        
+        if category:
+            funcs.append(CategorySimilarity('category'))
+            items["category"] = category
+        
+        if tags:
+            funcs.append(TagSimilarity('tags'))
+            items["tags"] = tags
+
+        items = items.to_dict(orient='records')
+
+        map_size_bytes = 1 # up to 255 unique string keys (function names)
+        cache = KVStore(path=tmp_files_path, key_mode=KVStore.KeyMode.SINGLE_KEY, value_mode=KVStore.ValueMode.NUMERIC, map_size_bytes=map_size_bytes)
+        engine = SimilarityEngine(funcs=funcs, cache=cache, max_workers=None)
+
+        rounds = {
+            "algorithms":   ["louvain", "leiden"],
+            "thresholds":   [0.6, 0.75, 0.9],
+            "func_groups":  [engine.registered_functions()],
+            "bootstrap":    None,
+        }
+        nfe = NFeMinerClustering(items=items, ids=index, engine=engine, rounds=rounds, n_runs_per_round=3, max_depth=3, min_cluster_size=2, lsh_key="raw_descriptions", semantic_key=semantic_key)
+
+        return nfe.run()
